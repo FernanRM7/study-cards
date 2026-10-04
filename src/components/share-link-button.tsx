@@ -25,6 +25,7 @@ export function ShareLinkButton({ deck, builtIn = false }: ShareLinkButtonProps)
   const LinkIcon = useIcon("link");
   const CheckIcon = useIcon("check");
   const XIcon = useIcon("x");
+  const [error, setError] = useState("");
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -37,7 +38,12 @@ export function ShareLinkButton({ deck, builtIn = false }: ShareLinkButtonProps)
       const url = builtIn ? `${window.location.origin}/` : await shareDeck(deck);
       await navigator.clipboard.writeText(url);
       setState("copied");
-    } catch {
+    } catch (cause) {
+      setError(cause instanceof Error && /400|too large|demasiado grande/i.test(cause.message)
+        ? "El mazo es demasiado grande para compartirlo."
+        : cause instanceof Error && /set up|configured|disponible/i.test(cause.message)
+          ? "Compartir no está disponible en este sitio."
+          : "No se pudo compartir el mazo. Inténtalo de nuevo.");
       setState("failed");
     }
     if (timer.current) clearTimeout(timer.current);
@@ -45,9 +51,10 @@ export function ShareLinkButton({ deck, builtIn = false }: ShareLinkButtonProps)
   };
 
   const label =
-    state === "copied" ? "Link copied" : state === "failed" ? "Couldn't copy the link" : "Copy share link";
+    state === "copied" ? "Enlace copiado" : state === "failed" ? error : "Compartir mazo";
 
   return (
+    <span className="relative inline-flex">
     <Button
       variant="ghost"
       size="icon"
@@ -63,5 +70,7 @@ export function ShareLinkButton({ deck, builtIn = false }: ShareLinkButtonProps)
           component each render. */}
       {createElement(state === "copied" ? CheckIcon : state === "failed" ? XIcon : LinkIcon, { size: 16 })}
     </Button>
+    {state === "failed" && <span role="alert" className="absolute right-0 top-full z-20 mt-1 w-56 rounded-xl border border-border bg-background p-3 text-xs text-destructive shadow-lg">{error}</span>}
+    </span>
   );
 }

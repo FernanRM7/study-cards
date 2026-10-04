@@ -22,6 +22,10 @@ import { useSyncExternalStore } from "react";
 
 export type AnswerSound = "correct" | "wrong";
 
+// The landing no longer offers audio controls; keep answer sounds silent for
+// every deck, including sessions with an older unmuted preference stored.
+export const SOUNDS_ENABLED = false;
+
 export interface SoundSettings {
   /** Overall loudness, 0–1. */
   volume: number;
@@ -240,7 +244,7 @@ export function audioContext(): AudioContext | null {
 /** Play one of the sounds now, with the given settings or the current ones.
  *  Silent where there is no Web Audio, and never throws. */
 export function playSound(kind: AnswerSound, settings?: SoundSettings) {
-  if (isMuted()) return;
+  if (!SOUNDS_ENABLED || isMuted()) return;
   const ctx = audioContext();
   if (!ctx) return;
   try {

@@ -12,6 +12,7 @@ brief agents follow when writing one is [`prompts/new-deck.md`](../prompts/new-d
 | `title` | string | Site name: browser tab, share cards, share text. |
 | `headline` | string | The big question on the landing page and the deck intro, e.g. "Are you an Art connoisseur?" |
 | `tagline` | string | One line for metadata and share cards. |
+| `cover` | `{ image, alt, credit? }` | Optional topic image shown on the deck intro. `credit` uses `{ title?, author?, license?, source? }`. |
 | `intro` | string[] | Optional. Short paragraphs on the landing page. |
 | `cta` | string | Optional. Button label, default "Test knowledge". |
 | `author` | `{ name, url? }` | Optional. Credit line on the landing page and the deck intro. |
@@ -19,6 +20,10 @@ brief agents follow when writing one is [`prompts/new-deck.md`](../prompts/new-d
 | `timerSeconds` | number | Optional, default 20. Countdown per card on timed levels. |
 | `verdicts` | `{ low, mid, high, perfect }` | Results-screen line by score band: ≤ 30 %, ≤ 60 %, < 100 %, 100 %. |
 | `levels` | Level[] | In play order. |
+
+Generated covers use short English search keywords and credited Commons
+results. Saved decks missing a cover can acquire one when opened, without
+regenerating their cards. `FLASHCARDS_IMAGES=off` disables both lookups.
 
 ## Level
 
@@ -96,3 +101,25 @@ npm run check-deck -- x.json  # any file
 Errors (schema violations, duplicate ids, a pass score higher than the card
 count) fail the build too. Warnings point at things the reference deck does
 differently (card counts, single-kind levels, missing image files).
+
+## Optional study provenance
+
+`provenance` on any question is `{ kind: "ai" }` for model supplements, or
+`{ kind: "material", references: [{ id, file, location }] }` for document-based
+content. The reveal shows the filename and page, slide or Markdown section.
+Older decks omit it. References do not establish factual correctness.
+
+A deck may set `sharing: "manual"` to disable automatic background uploads.
+Explicit share buttons and `share_flashcard_deck` remain available.
+
+### Exámenes combinados
+
+`mode?: "study" | "exam"` distingue el recorrido; si falta se usa estudio.
+Un examen tiene exactamente un grupo visible y sin tiempo, mezcla todas sus
+tarjetas y revela respuestas al finalizar. El creador usa
+`passScore = Math.ceil(total * 0.7)`.
+Cada pregunta puede incluir `sourceDeck?: { slug, title, questionId }` para indicar
+el mazo y pregunta original. Se conserva además `provenance`, imágenes y créditos.
+Los IDs se regeneran al combinar; preguntas repetidas se conservan.
+El examen guarda una copia independiente, admite el mismo almacenamiento,
+importación y enlace compartido, y no actualiza los mazos de origen.

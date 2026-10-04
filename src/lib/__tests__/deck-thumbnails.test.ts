@@ -50,10 +50,10 @@ describe("deck thumbnails", () => {
     ]);
   });
 
-  it("uses design-engineering cards around the deck's center preview", () => {
+  it("uses three independent Spanish landing previews", () => {
     expect(landingIllustratedCards(levels).map((card) => card.id)).toEqual([
       "landing-bezier-curve",
-      "deck-two",
+      "landing-starry-night",
       "landing-oklch-color",
     ]);
   });

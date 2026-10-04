@@ -18,8 +18,8 @@ the shortest path to a finished deck.
   "Calling the tools from a page script" below.
 - Storage: decks you make are saved in this browser's `localStorage` only. No
   accounts, no server-side storage.
-- The built-in deck (slug `art-timeline`) is always present and can't be
-  deleted.
+- The built-in example deck (slug `art-timeline`) remains available to the
+  tools, but is not listed with decks saved by the visitor.
 
 ## The shortest path to a new deck
 
@@ -42,7 +42,7 @@ Two shortcuts:
 
 - `import_flashcards` saves a complete deck in one call.
 - `generate_flashcards` asks the site's own AI to write the deck. It only
-  works when the deployment has an Anthropic key on the server; when it
+  works when the deployment has credentials for its configured AI provider on the server; when it
   doesn't, the error says so and points you to the authoring tools.
 
 ## Calling the tools from a page script
@@ -202,7 +202,7 @@ Input: `{ topic, notes? }`.
 
 The server plans a deck and writes it one level at a time; the tool resolves
 once the first level is playable and the quiz is open, while the rest keep
-arriving. Requires `ANTHROPIC_API_KEY` on the deployment. `structuredContent`:
+arriving. Requires server credentials: Cloudflare Account ID and Workers AI token by default, or `ANTHROPIC_API_KEY` with `FLASHCARDS_PROVIDER=anthropic`. `structuredContent`:
 `{ slug, title, headline }`.
 
 ### `play_flashcards`
@@ -219,6 +219,10 @@ Input: `{ slug }`.
 Removes a saved deck or a draft. The built-in deck can't be deleted.
 
 ## Card format
+
+A deck may include `cover: { image, alt, credit? }` for a credited topic
+image on its introduction. `credit` uses the same optional fields as
+`imageCredit` (`title`, `author`, `license`, `source`).
 
 | Parameter | Field(s) | Notes |
 | --- | --- | --- |
@@ -282,3 +286,28 @@ The reference deck is an art-history quiz. Decks that feel like it:
 The tools are registered in `src/lib/webmcp.ts`; the schema they share with
 the site is `src/lib/deck.ts`. The human docs are in the repository's
 `README.md` and `docs/` folder.
+
+## Material study and provenance
+
+The home page also offers **Crear desde mi material** for local `.md`, `.pdf`
+and `.pptx` files. Extraction occurs in the browser, with a review step before
+selected text goes to Workers AI. The UI supports 10, 20 or 30 cards in Spanish.
+This file-upload flow is a UI capability, not an additional WebMCP tool.
+
+Cards optionally carry `provenance`: either `{ kind: "ai" }`, or
+`{ kind: "material", references: [{ id, file, location }] }`. References point
+to the document's page, slide or section; they do not guarantee correctness.
+They contain labels, not document text. Existing cards can omit provenance.
+
+Sharing is explicit for every deck. Material decks carry `sharing: "manual"`.
+`share_flashcard_deck` is an explicit sharing action,
+and uploads the questions and reference labels. Generation uses the selected
+server provider; Workers Free quota exhaustion stops further generation.
+
+## Combined exams
+Optional deck field: `mode: "exam"` (omitted means study). An exam has exactly
+one visible, untimed level; the UI reveals answers only after the entire run.
+Set passScore to ceil(total cards * 0.7).
+Optional question field: `sourceDeck: { slug, title, questionId }`.
+Retain provenance, pictures, credits and correct-answer ordering when copying
+cards; regenerate IDs. Import/get/publish/share preserve the metadata.

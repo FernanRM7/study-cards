@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { DECK } from "@/data";
 import type { Deck } from "@/lib/deck";
 import { buildDeck, GenerationUnavailable, type DeckBuild } from "@/lib/create-deck";
 import { bestScoresFor, useSavedDecks } from "@/lib/deck-store";
 import { adoptSharedDeck } from "@/lib/adopt-shared-deck";
+import { ensureDeckCover } from "@/lib/deck-cover";
 import { useAgentActivity, useWebMcpTools, type DeckSummary } from "@/lib/webmcp";
-import { REPO_URL } from "@/lib/site";
 import { spring } from "@/lib/springs";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,12 +16,14 @@ import { Confetti } from "@/components/quiz/confetti";
 import { WanderingCursor } from "@/components/wandering-cursor";
 import { DeckList } from "@/components/deck-list";
 import { ShareLinkButton } from "@/components/share-link-button";
-import { AgentPromptButton } from "@/components/agent-prompt-button";
 import { LandingCardFan } from "@/components/landing-card-fan";
 import { PhyllotaxisBackdrop } from "@/components/phyllotaxis-backdrop";
 import { QuizModal } from "@/components/quiz/quiz-modal";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { SoundToggle } from "@/components/sound-toggle";
+import dynamic from "next/dynamic";
+
+const ExamCreator = dynamic(() => import("@/components/exam-creator").then(m => m.ExamCreator));
+const MaterialCreator = dynamic(() => import("@/components/material-creator").then(m => m.MaterialCreator));
 
 /** The Button's loading glyph, on its own, for the status line. */
 function Spinner() {
@@ -45,11 +47,11 @@ function Spinner() {
 function statusLine(build: DeckBuild): string {
   switch (build.status.phase) {
     case "planning":
-      return `Planning a deck about “${build.topic}”…`;
+      return `Preparando un mazo sobre “${build.topic}”…`;
     case "writing":
-      return `Writing the ${build.status.level.name} level (${build.status.index} of ${build.status.total})…`;
+      return `Creando el grupo ${build.status.index} de ${build.status.total}…`;
     case "ready":
-      return `“${build.deck?.title}” is ready — all ${build.deck?.levels.length} levels.`;
+      return `“${build.deck?.title}” está listo.`;
     case "error":
       return build.status.message;
   }
@@ -71,9 +73,37 @@ interface HomeScreenProps {
 }
 
 export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = {}) {
+  const materialBusy = useRef(false);
+  const [storageNotice, setStorageNotice] = useState("");
+  const [creatorView, setCreatorView] = useState<"material" | "exam" | null>(null);
+  const materialOpen = creatorView === "material";
+  const examOpen = creatorView === "exam";
+  const [decksCollapsed, setDecksCollapsed] = useState(false);
+  const [keyboardTransition, setKeyboardTransition] = useState(false);
+  const [navigationRevision, setNavigationRevision] = useState(0);
+  const navigationRevisionRef = useRef(0);
+  const reduceMotion = useReducedMotion() ?? false;
+  const creatorTarget = useRef<"material" | "exam" | null>(null);
+  const navigateCreator = (next: "material" | "exam" | null, keyboard = false) => {
+    navigationRevisionRef.current += 1;
+    setNavigationRevision(navigationRevisionRef.current);
+    creatorTarget.current = next;
+    setKeyboardTransition(keyboard);
+    setCreatorView(next);
+    if (!next || keyboard) setDecksCollapsed(!!next);
+  };
+  const toggleMaterial = (next: boolean, keyboard = false) => navigateCreator(next ? "material" : null, keyboard);
+  const toggleExam = (next: boolean, keyboard = false) => navigateCreator(next ? "exam" : null, keyboard);
+  // Navigation back is immediate, including every layout projection.
+  const instantNavigation = !creatorView || keyboardTransition;
+  const navigationMotion = instantNavigation ? { duration: 0 }
+    : reduceMotion ? { duration: spring.fast.duration } : { ...spring.slow, bounce: 0 };
   const saved = useSavedDecks();
   // Newest first, so a deck just written sits at the top of the list.
-  const decks = useMemo(() => [DECK, ...[...saved].reverse()], [saved]);
+  const savedDecks = useMemo(() => [...saved].reverse(), [saved]);
+  // Keep the example registered for WebMCP and slug reservation. The visible
+  // picker below contains only decks saved by the visitor.
+  const decks = useMemo(() => [DECK, ...savedDecks], [savedDecks]);
 
   const [activeDeck, setActiveDeck] = useState<Deck>(DECK);
   const [quizOpen, setQuizOpen] = useState(false);
@@ -88,6 +118,11 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
     setActiveDeck(deck);
     setFresh(!!options?.fresh);
     setQuizOpen(true);
+    if (!deck.cover && deck.mode !== "exam" && deck.slug !== DECK.slug) {
+      void ensureDeckCover(deck).then(enriched => {
+        if (enriched.cover) setActiveDeck(current => current.slug === enriched.slug && !current.cover ? { ...current, cover: enriched.cover } : current);
+      });
+    }
   }, []);
 
   // A shared deck lands in this browser's collection under its own slug —
@@ -99,7 +134,13 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
     sharedRef.current = shared.id;
     // The store, not `decks`: during hydration the React snapshot of the
     // saved decks is still the server's empty one.
-    const deck = adoptSharedDeck(shared, DECK, window.location.origin);
+    let deck = shared.deck;
+    try {
+      deck = adoptSharedDeck(shared, DECK, window.location.origin);
+      void Promise.resolve().then(() => setStorageNotice("Mazo guardado en este navegador."));
+    } catch {
+      void Promise.resolve().then(() => setStorageNotice("No se pudo guardar el mazo en este navegador. Podrás estudiarlo mientras esté abierto."));
+    }
     // Not in the effect's own tick: opening is a state change.
     void Promise.resolve().then(() => openDeck(deck));
   }, [shared, openDeck]);
@@ -119,7 +160,7 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
   const buildRef = useRef<Promise<Deck> | null>(null);
   const generateDeck = useCallback(
     (topic: string, notes?: string): Promise<Deck> => {
-      if (buildRef.current) throw new Error("A deck is already being written. Wait for it to finish.");
+      if (buildRef.current || materialBusy.current) throw new Error("A deck is already being written. Wait for it to finish.");
       let playable: ((deck: Deck) => void) | null = null;
       let failed: ((error: unknown) => void) | null = null;
       const firstLevel = new Promise<Deck>((resolve, reject) => {
@@ -233,32 +274,21 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
           : null;
   // The headline follows the work: who has just arrived, what is being
   // created while the agent writes, what is ready once it has published.
-  const headline =
-    agentState === "expected"
-      ? "Psst. Your agent is waiting on you."
-      : agentState === "working" && activity.phase === "working"
-      ? activity.title
-        ? `Creating flashcards for ${activity.title}…`
-        : "Creating your flashcards…"
-      : agentState === "done" && activity.phase === "done"
-        ? // With other decks listed, the new one is the last row and names
-          // itself; the headline speaks for the shelf instead.
-          decks.length > 1
-          ? "One more deck on the shelf."
-          : `Flashcards for ${activity.deck.title} are ready.`
-        : "Hey agent, make your human smarter.";
+  const headline = "Study cards";
   // Once published with other decks listed, the new deck is already the
   // list's last row: a status line naming it again would list it twice.
-  const readyInList = agentState === "done" && decks.length > 1;
+  const creatorPanelVisible = !!creatorView && (decksCollapsed || savedDecks.length === 0 || agentState === "working");
+  const readyInList = agentState === "done" && savedDecks.length > 0;
 
   return (
-    <div className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden bg-surface-1 px-6">
+    <div className="relative flex min-h-dvh flex-col items-center justify-start overflow-x-clip bg-surface-1 px-6 sm:justify-center">
       <PhyllotaxisBackdrop />
 
       <motion.main
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        layout={reduceMotion ? false : "position"}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ ...spring.slow, bounce: 0, layout: navigationMotion }}
         // 480px: wide enough for "Creating your flashcards…" on one line.
         // A flex column so the status line can step above the deck list
         // while the agent is expected (`order-last` on the list below).
@@ -286,6 +316,7 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
         </AnimatePresence>
         <AnimatePresence mode="wait" initial={false}>
           <motion.h1
+            tabIndex={-1}
             key={headline}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
@@ -293,12 +324,7 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
             transition={{ duration: spring.slow.duration, ease: "easeOut" }}
             className={cn(
               "relative z-10 text-balance font-heading text-[52px] leading-none text-foreground",
-              // The one-line promise stays on one line where the column is
-              // wide enough (480px); on a phone it wraps like any headline.
-              headline === "Creating your flashcards…" && "sm:whitespace-nowrap",
-              // While the agent writes, the headline itself is the loading
-              // signal: a muted band sweeps across it.
-              agentState === "working" && "shimmer-heading"
+              "sm:whitespace-nowrap"
             )}
           >
             {headline}
@@ -308,17 +334,27 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
         {/* The decks on this page, once there is a choice to make. They step
             aside while an agent is writing. */}
         <AnimatePresence initial={false}>
-          {decks.length > 1 && agentState !== "working" && (
+          {savedDecks.length > 0 && agentState !== "working" && (
             <motion.div
               key="decks"
               // While the agent is expected the status line reads first and
               // the decks follow it.
-              className={cn(agentState === "expected" ? "order-last mt-4" : "mt-8")}
+              className={cn(
+                decksCollapsed ? "hidden" : agentState === "expected" ? "order-last mt-4" : "mt-8"
+              )}
+              inert={!!creatorView}
+              aria-hidden={!!creatorView || undefined}
+              onAnimationComplete={() => {
+                if (creatorTarget.current && navigationRevisionRef.current === navigationRevision) setDecksCollapsed(true);
+              }}
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: spring.moderate.duration } }}
+              animate={{ opacity: creatorView ? 0 : 1, transition: {
+                duration: instantNavigation ? 0 : reduceMotion ? spring.fast.duration : spring.moderate.exit.duration,
+              } }}
               exit={{ opacity: 0, transition: { duration: spring.moderate.exit.duration } }}
             >
-              <DeckList decks={decks} builtInSlug={DECK.slug} onPlay={(slug) => playDeck(slug)} />
+              <DeckList decks={savedDecks} builtInSlug={DECK.slug} onPlay={(slug) => playDeck(slug)}
+                onDeleted={deleteDeck} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -326,7 +362,7 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
         {/* Status under the headline: what the generator is doing, or what this
             deployment can do. */}
         <AnimatePresence mode="wait" initial={false}>
-          {!readyInList && (
+          {!readyInList && (build || agentState) && (
           <motion.div
             key={
               build
@@ -343,7 +379,7 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
               "flex min-h-9 items-center gap-3 text-[14px] leading-snug text-muted-foreground",
               agentState === "expected"
                 ? "mt-8"
-                : decks.length > 1 && agentState !== "working"
+                : savedDecks.length > 0 && agentState !== "working"
                 ? "mt-4"
                 : build || agentState
                   ? "mt-8"
@@ -363,23 +399,23 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
                     className="ml-auto shrink-0 rounded-full"
                     onClick={() => openDeck(build.deck!)}
                   >
-                    Play
+                    Estudiar
                   </Button>
                 )}
               </>
             ) : agentState === "expected" ? (
               // The agent has landed and is asking, in its own chat, what
               // the human wants to learn: send them back there.
-              <span>Your agent is asking what you want to learn. Answer in the chat.</span>
+              <span>Tu agente espera una respuesta. Contéstale en el chat.</span>
             ) : agentState === "working" ? (
               // The headline's shimmer and the wandering cursor carry the
               // state; the line stays empty (its height is reserved).
               null
             ) : agentState === "quiet" ? (
-              <span>Your agent has gone quiet. Nudge it, or pick a deck.</span>
+              <span>Tu agente dejó de responder. Puedes elegir un mazo.</span>
             ) : agentState === "done" && activity.phase === "done" ? (
               <>
-                <span>“{activity.deck.title}” is ready.</span>
+                <span>“{activity.deck.title}” está listo.</span>
                 {!quizOpen && (
                   <span className="ml-auto flex shrink-0 items-center gap-1">
                     <ShareLinkButton deck={activity.deck} />
@@ -389,101 +425,48 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
                       className="rounded-full"
                       onClick={() => openDeck(activity.deck)}
                     >
-                      Play
+                      Estudiar
                     </Button>
                   </span>
                 )}
               </>
-            ) : (
-              // The page is agent-first: hand the job to the visitor's own
-              // agent. The prompt sends it here to use the WebMCP tools.
-              // mt-2 opens the gap under the headline a touch wider than the
-              // status lines get.
-              <div className="mt-2 flex flex-col items-start gap-9">
-                <span>
-                  Ask what your human want to learn, then build beautiful flashcards.
-                </span>
-                {/* Pulled left by the pill's border, padding and the copy
-                    button's own inset, so the copy icon lines up with the
-                    text above instead of the pill's edge. */}
-                {/* Pulled left by the border and the icon's inset so the
-                    label sits flush with the headline. */}
-                <AgentPromptButton className="-ml-[17px]" />
-              </div>
-            )}
+            ) : null}
           </motion.div>
           )}
         </AnimatePresence>
 
-        {/* The nudge onward, once a deck is done: another deck is one prompt
-            away, so the prompt itself is right here to copy. */}
-        <AnimatePresence initial={false}>
-          {agentState === "done" && (
-            <motion.div
-              key="nudge"
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0, transition: { duration: spring.moderate.duration, ease: "easeOut" } }}
-              exit={{ opacity: 0, transition: { duration: spring.fast.exit.duration } }}
-              className={cn(
-                "flex flex-col items-start gap-4 text-[14px] leading-snug text-muted-foreground",
-                readyInList ? "mt-8" : "mt-6"
-              )}
-            >
-              <span>Curious about something else? Ask your agent for another deck.</span>
-              {/* Pulled left by the border and the icon's inset so the
-                  label sits flush with the text above. */}
-              <AgentPromptButton another className="-ml-[17px]" />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <motion.div
+          onAnimationComplete={() => { if (creatorTarget.current === "exam" && navigationRevisionRef.current === navigationRevision) setDecksCollapsed(true); }}
+          hidden={examOpen && decksCollapsed}
+          inert={examOpen} aria-hidden={examOpen || undefined}
+          animate={{ opacity: examOpen ? 0 : 1 }}
+          transition={{ duration: instantNavigation ? 0 : reduceMotion ? spring.fast.duration : spring.moderate.exit.duration }}
+          className="w-full">
+          <MaterialCreator open={materialOpen} onOpenChange={toggleMaterial}
+            panelVisible={materialOpen && creatorPanelVisible}
+            instantMotion={instantNavigation}
+            disabled={!!building || agentState === "working"}
+            takenSlugs={decks.map(d => d.slug)} onPlay={deck => openDeck(deck, { fresh: true })}
+            onBusyChange={busy => { materialBusy.current = busy; }} />
+        </motion.div>
+        <motion.div
+          onAnimationComplete={() => { if (creatorTarget.current === "material" && navigationRevisionRef.current === navigationRevision) setDecksCollapsed(true); }}
+          hidden={materialOpen && decksCollapsed}
+          inert={materialOpen} aria-hidden={materialOpen || undefined}
+          animate={{ opacity: materialOpen ? 0 : 1 }}
+          transition={{ duration: instantNavigation ? 0 : reduceMotion ? spring.fast.duration : spring.moderate.exit.duration }}
+          className="w-full">
+          <ExamCreator open={examOpen} onOpenChange={toggleExam}
+            panelVisible={examOpen && creatorPanelVisible} instantMotion={instantNavigation}
+            decks={savedDecks} disabled={!!building || agentState === "working"}
+            onPlay={deck => openDeck(deck, { fresh: true })}
+            onSaved={() => setStorageNotice("Examen guardado en este navegador.")} />
+        </motion.div>
+        {storageNotice && <p role="status" className="mt-3 text-sm text-muted-foreground">{storageNotice}</p>}
       </motion.main>
 
-      {/* Stacked on phones, where a row would run under the theme toggle;
-          one line with separators from the sm breakpoint up. */}
-      <footer className="absolute bottom-6 left-6 z-10 flex flex-col items-start gap-1.5 text-[13px] text-muted-foreground sm:flex-row sm:items-center">
-        {DECK.author && (
-          <>
-            {DECK.author.url ? (
-              <a
-                href={DECK.author.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="transition-colors duration-80 hover:text-foreground"
-              >
-                {DECK.author.name}
-              </a>
-            ) : (
-              <span>{DECK.author.name}</span>
-            )}
-            {REPO_URL && <span aria-hidden className="hidden sm:inline">·</span>}
-          </>
-        )}
-        {REPO_URL && (
-          <a
-            href={REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="transition-colors duration-80 hover:text-foreground"
-          >
-            Free &amp; Open Source
-          </a>
-        )}
-        <span aria-hidden className="hidden sm:inline">·</span>
-        {/* Agents on this page get tools on document.modelContext; the
-            reference for them (and curious humans) is a plain markdown file. */}
-        <a href="/agents.md" className="transition-colors duration-80 hover:text-foreground">
-          For agents
-        </a>
-      </footer>
-
-      <div className="fixed bottom-6 right-6 z-20">
+      <div className="fixed z-20" style={{ right: "max(1.5rem, env(safe-area-inset-right))", bottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
         <ThemeToggle />
-      </div>
-
-      {/* Above the quiz modal and its backdrop (z-50) and the fireworks
-          canvas (z-60, click-through), so sound can be muted mid-quiz. */}
-      <div className="fixed right-4 top-4 z-[70] sm:right-6 sm:top-6">
-        <SoundToggle />
       </div>
 
       <QuizModal

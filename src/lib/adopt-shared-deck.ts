@@ -23,7 +23,7 @@ export function adoptSharedDeck(shared: SharedDeck, builtIn: Deck, origin: strin
     deck = { ...deck, slug: uniqueSlug(deck.slug, taken) };
   }
   const isBuiltIn = deck.slug === builtIn.slug;
-  if (!isBuiltIn && (!existing || deck.slug !== shared.deck.slug)) saveDeck(deck);
+  if (!isBuiltIn && (!existing || deck.slug !== shared.deck.slug)) saveDeck(deck, true);
   setShareLink(deck, `${origin}/d/${shared.id}`);
   return deck;
 }

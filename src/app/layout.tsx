@@ -4,15 +4,12 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { heading, inter } from "./fonts";
 import { ThemeProvider, themeInitScript } from "@/components/theme-provider";
+import { SITE_DESCRIPTION, SITE_TITLE } from "./site-metadata";
 
 // The site's identity — title, description, the OpenGraph card and the
 // favicon set — comes from metadata.config.json via `npx metadata-gen`
 // (the generated files live in public/metadata). The SVG favicon stays the
 // app's own icon.svg; the generator's PNG/ICO set is drawn from it.
-export const SITE_TITLE = "Human Memory";
-export const SITE_DESCRIPTION =
-  "Hey agent, make your human smarter. Flashcards written by your AI agent, one prompt away.";
-
 export const metadata: Metadata = {
   // Absolute base for OG/twitter image URLs (the quiz share cards).
   // NEXT_PUBLIC_SITE_URL overrides; otherwise Vercel's production domain

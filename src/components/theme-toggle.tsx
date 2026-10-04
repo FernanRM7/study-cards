@@ -6,7 +6,7 @@ import { surfaceClasses } from "@/lib/surface-classes";
 import { cn } from "@/lib/utils";
 
 /**
- * Bottom-right dark-mode toggle: the @fluid Switch seated on a Fluid
+ * Theme toggle: the @fluid Switch seated on a Fluid
  * Functionalism surface pill (surfaceClasses(4), matching the scale control).
  * The surface gives the switch contrast against the near-white canvas — the
  * bare track is otherwise near-invisible in light mode. The label stays for
@@ -27,7 +27,7 @@ export function ThemeToggle() {
       )}
     >
       <Switch
-        label="Toggle dark mode"
+        label="Cambiar el tema oscuro"
         checked={theme === "dark"}
         onToggle={toggle}
         // No padding: the surface pill hugs the switch. The hover feedback then

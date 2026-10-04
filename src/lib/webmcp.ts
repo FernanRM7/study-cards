@@ -702,7 +702,7 @@ function tools(h: () => FlashcardToolHandlers): ToolDef[] {
       name: "generate_flashcards",
       title: "Have the site write a deck",
       description:
-        "Ask the site's own AI (Claude, on the server) to plan and write a deck about a topic, then open it: the first level is ready in under a minute and the quiz opens on it; the rest are written in the background. Only works when the deployment has a key — if it doesn't, write the deck yourself with start_flashcard_deck, add_flashcards and publish_flashcard_deck.",
+        "Ask the site's configured AI provider (Workers AI by default, on the server) to plan and write a deck about a topic, then open it: the quiz opens on the first completed level; the rest are written in the background. Only works when the deployment has a key — if it doesn't, write the deck yourself with start_flashcard_deck, add_flashcards and publish_flashcard_deck.",
       inputSchema: {
         type: "object",
         properties: {

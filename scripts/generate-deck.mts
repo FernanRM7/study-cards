@@ -1,13 +1,13 @@
-// Generate a deck with Claude and write it to src/data/deck.json — the same
+// Generate a deck with the configured AI provider and write it to src/data/deck.json — the same
 // two-pass pipeline the site uses (src/lib/server/generate.ts).
 //
 //   npm run generate -- "The French Revolution"
 //   npm run generate -- "Coffee brewing" --notes "Images available: /images/v60.jpg (a V60 dripper)"
 //   npm run generate -- "Chess openings" --out decks/chess.json
 //
-// Needs ANTHROPIC_API_KEY in the environment (or a .env file, see
+// Needs provider credentials in the environment (or .env.local/.env, see
 // .env.example). The brief the model follows is prompts/new-deck.md.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { assembleDeck, type QuizQuestion } from "../src/lib/deck.ts";
@@ -27,13 +27,9 @@ if (!topic) {
   process.exit(1);
 }
 
-// A .env file is a convenience for local runs; the environment always wins.
-const envFile = path.resolve(".env");
-if (!process.env.ANTHROPIC_API_KEY && existsSync(envFile)) {
-  for (const line of readFileSync(envFile, "utf8").split("\n")) {
-    const m = line.match(/^\s*ANTHROPIC_API_KEY\s*=\s*"?([^"\s]+)"?\s*$/);
-    if (m) process.env.ANTHROPIC_API_KEY = m[1];
-  }
+// Shell environment wins; local overrides take precedence over .env defaults.
+for (const name of [".env.local", ".env"]) {
+  if (existsSync(name)) process.loadEnvFile(name);
 }
 
 // Imported after the .env pass so the client sees the key.

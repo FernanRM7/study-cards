@@ -32,7 +32,25 @@ export const ImageCreditSchema = z
   .partial();
 export type ImageCredit = z.infer<typeof ImageCreditSchema>;
 
+export const DeckCoverSchema = z.object({
+  image: imagePath,
+  alt: z.string().min(1),
+  credit: ImageCreditSchema.optional(),
+});
+export type DeckCover = z.infer<typeof DeckCoverSchema>;
+
+export const ProvenanceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("material"), references: z.array(z.object({
+    id: z.string().min(1), file: z.string().min(1), location: z.string().min(1),
+  })).min(1) }),
+  z.object({ kind: z.literal("ai") }),
+]);
+
 const QuestionBase = {
+  sourceDeck: z.object({
+    slug: z.string().min(1), title: z.string().min(1), questionId: z.string().min(1),
+  }).optional(),
+  provenance: ProvenanceSchema.optional(),
   id: z.string().min(1).describe("Unique across the whole deck, e.g. s1, s2"),
   fact: z
     .string()
@@ -112,6 +130,11 @@ export const QuizLevelSchema = z.object({
 /** The deck's shape without cross-field checks — what the generator plans
  *  against and what the JSON schema for external authors is derived from. */
 export const DeckBaseSchema = z.object({
+    mode: z.enum(["study", "exam"]).optional(),
+    /** Material decks are shared only after an explicit action. */
+    sharing: z.literal("manual").optional(),
+    /** Optional topic image shown on the deck intro. */
+    cover: DeckCoverSchema.optional(),
     /** Namespaces saved progress and share URLs. */
     slug,
     /** Site name: browser tab, share cards. */
@@ -142,6 +165,10 @@ export const DeckBaseSchema = z.object({
 });
 
 export const DeckSchema = DeckBaseSchema.superRefine((deck, ctx) => {
+    if (deck.mode === "exam" && (deck.levels.length !== 1 || deck.levels.some(l => l.timed || l.hidden)))
+      ctx.addIssue({ code: "custom", path: ["levels"], message: "An exam must have one visible, untimed group." });
+    if (deck.mode === "exam" && deck.passScore !== Math.ceil(deck.levels.reduce((n, l) => n + l.questions.length, 0) * .7))
+      ctx.addIssue({ code: "custom", path: ["passScore"], message: "An exam passes at 70% (rounded up)." });
     const levelIds = new Set<string>();
     const questionIds = new Set<string>();
     deck.levels.forEach((lv, li) => {
@@ -329,6 +356,8 @@ export const EXAMPLE_CARDS: QuizQuestion[] = [
 
 /** The rules the site enforces, in one place for tools and docs. */
 export const AUTHORING_RULES = [
+  'Optional mode "exam" requires one visible, untimed group; use ceil(total cards * 0.7) as passScore. Answers are reviewed after the complete run.',
+  "Optional sourceDeck {slug,title,questionId} identifies the original deck for copied questions; preserve provenance and image credits.",
   "options[0] is the correct answer; the site shuffles options, you must not.",
   "options has 2 to 6 entries (4 is the sweet spot); order items has 3 to 5, listed lowest value first.",
   "Every card has a fact: one line shown after answering, right or wrong, that adds something.",
@@ -336,11 +365,13 @@ export const AUTHORING_RULES = [
   "passScore can't exceed a level's card count; the reference deck uses 10 cards per level and passes at 7.",
   "Pictures: for a card about something you can look at (a work, a building, a species, an object, a place), set picture: { wikipediaTitle, slot, alt } with the exact English Wikipedia article title of the thing pictured; the site fetches that article's lead image and credits it. slot \"image\" shows sharp while answering (\"what is this?\" cards); \"revealImage\" stays blurred until the answer (\"who made X?\" cards, so the picture can't spoil it). alt describes the picture without naming the answer. To pick a specific file instead, find_flashcard_images returns licensed candidates with a ready credit for image/revealImage + imageCredit. Never invent an image URL.",
   "Level ids and the deck slug are lowercase letters, digits and dashes.",
+  'Optional provenance: {kind: "material", references: [{id, file, location}]} or {kind: "ai"}; references indicate origin, not factual verification. Material decks use sharing: "manual".',
 ];
 
 /** House style, condensed from prompts/new-deck.md for agents on the page. */
 export const HOUSE_STYLE = [
   "Levels ramp: famous basics → relationships and why → exact numbers and deep cuts (timed) → a hidden last level on a 10-second clock mixing every trick.",
+  "The material-study UI uses one to three non-timed, non-hidden sets in Spanish, with clearly marked AI supplements.",
   "Ten cards per level, mixing kinds: about six choice, two truefalse, one or two order.",
   "Distractors are plausible and from the same domain; no 'all of the above', no jokes as options.",
   "About half the true/false statements are false, and a false one is a common misconception, not nonsense.",

@@ -119,4 +119,13 @@ describe("playAnswerSound", () => {
     vi.stubGlobal("window", {});
     expect(() => playAnswerSound(false)).not.toThrow();
   });
+
+  it("stays silent when an older saved preference leaves sounds unmuted", () => {
+    const AudioContextMock = vi.fn();
+    vi.stubGlobal("localStorage", { getItem: () => null });
+    vi.stubGlobal("window", { AudioContext: AudioContextMock });
+    playAnswerSound(true);
+    playAnswerSound(false);
+    expect(AudioContextMock).not.toHaveBeenCalled();
+  });
 });

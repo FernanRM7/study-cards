@@ -19,10 +19,9 @@ import {
   type QuizQuestion,
   type TrueFalseQuestion,
 } from "@/lib/deck";
+import { ExamModal } from "./exam-modal";
 import { Button } from "@/components/ui/button";
 import { Confetti } from "@/components/quiz/confetti";
-import { getShareLink } from "@/lib/deck-store";
-import { shareDeck } from "@/lib/share";
 import { playAnswerSound } from "@/lib/sounds";
 import {
   TIMER_RING_CIRCUMFERENCE,
@@ -36,6 +35,9 @@ import { useIcon } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
 import { surfaceClasses } from "@/lib/surface-classes";
 import { cn } from "@/lib/utils";
+import { Tooltip } from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
+import Image from "next/image";
 
 // ── Progress persistence ────────────────────────────────────
 // Same pattern as the theme preference: a small localStorage blob, guarded so
@@ -827,11 +829,10 @@ interface QuizModalProps {
   celebrate?: boolean;
 }
 
-export function QuizModal({
+function StudyQuizModal({
   open,
   onOpenChange,
   deck,
-  shareable = false,
   celebrate = false,
 }: QuizModalProps) {
   // The deck drives everything below: levels, pass mark, countdown length.
@@ -856,15 +857,9 @@ export function QuizModal({
   const [showTimedIntro, setShowTimedIntro] = useState(false);
   // Whether the run that just ended unlocked the next set of cards.
   const [justUnlocked, setJustUnlocked] = useState(false);
-  // The deck's share link, made while the player answers so it is ready
-  // the moment the run ends. One request per deck, deduplicated in
-  // shareDeck; quietly skipped when the deployment has no store.
-  const requestShareLink = () => {
-    if (!shareable || getShareLink(deck)) return;
-    shareDeck(deck).catch(() => {});
-  };
   const [confirmExit, setConfirmExit] = useState(false);
   const [best, setBest] = useState<BestScores>({});
+  const [coverFailed, setCoverFailed] = useState(false);
   // Guards resolve/timeout against double-firing (and against Strict Mode
   // double-invoking state updaters) so a card can never score twice.
   const revealedRef = useRef(false);
@@ -911,7 +906,6 @@ export function QuizModal({
     setConfirmExit(false);
     setShowTimedIntro(QUIZ_LEVELS[i].timed);
     setView("run");
-    requestShareLink();
   };
 
   // The card's height the moment it is answered. Untouched wrong options
@@ -969,7 +963,6 @@ export function QuizModal({
     // passed before is what unlocks the next set; a replayed pass isn't.
     // And a deck that couldn't be shared at the start (still being written)
     // gets its link now, for the result.
-    requestShareLink();
     const prev = best[level.id] ?? -1;
     setJustUnlocked(prev < PASS_SCORE && score >= PASS_SCORE);
     const isNewBest = score > prev;
@@ -1079,7 +1072,9 @@ export function QuizModal({
           // scrolling.
           className={cn(
             "fixed inset-0 z-50 m-auto max-h-[92vh] w-[min(480px,92vw)] overflow-y-auto",
-            "h-[min(700px,92vh)]",
+            view === "intro" && (!deck.cover || coverFailed) && thumbnails.length === 0
+              ? "bottom-auto top-1/2 h-auto -translate-y-1/2"
+              : "h-[min(700px,92vh)]",
             surfaceClasses(4)
           )}
           initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
@@ -1142,9 +1137,9 @@ export function QuizModal({
                   {/* The unlock moment sits high in the panel, under the close
                       control, rather than floating mid-frame: the deck springs
                       up as a fan of cards while fireworks fill the page. */}
-                  <div className="relative flex flex-1 flex-col items-center justify-start pt-8">
+                  <div className={cn("relative flex w-full flex-col items-center justify-start pt-8", (deck.cover && !coverFailed) || thumbnails.length > 0 ? "flex-none" : "flex-1")}>
                     {celebrate && <Confetti />}
-                    <DeckStack images={thumbnails} />
+                    {(!deck.cover || coverFailed) && <DeckStack images={thumbnails} />}
                     {celebrate && (
                       <p className="flex items-center gap-1 text-[13px] text-muted-foreground">
                         <DrawnCheck size={16} />
@@ -1163,6 +1158,16 @@ export function QuizModal({
                         Best score: {best[QUIZ_LEVELS[bestLevelIndex].id]}/
                         {QUIZ_LEVELS[bestLevelIndex].questions.length}
                       </p>
+                    )}
+                    {deck.cover && !coverFailed && (
+                      <figure className="my-6 w-full max-w-[320px]">
+                        <Image src={deck.cover.image} alt={deck.cover.alt} width={1120} height={630} unoptimized onError={() => setCoverFailed(true)} className="aspect-video max-h-[20vh] w-full rounded-2xl object-cover" />
+                        {deck.cover.credit && <figcaption className="mt-2 break-words text-[10px] leading-relaxed text-muted-foreground">
+                          {deck.cover.credit.source ? <a href={deck.cover.credit.source} target="_blank" rel="noreferrer" className="underline underline-offset-2">{deck.cover.credit.title ?? "Imagen"}</a> : (deck.cover.credit.title ?? "Imagen")}
+                          {deck.cover.credit.author ? ` · ${deck.cover.credit.author}` : ""}
+                          {deck.cover.credit.license ? ` · ${deck.cover.credit.license}` : ""}
+                        </figcaption>}
+                      </figure>
                     )}
                   </div>
 
@@ -1266,6 +1271,26 @@ export function QuizModal({
                             )}
                             {current.q.fact}
                           </p>
+                          {current.q.provenance && (
+                            <div className="mt-2 px-4">
+                              <Tooltip
+                                side="top"
+                                delayDuration={150}
+                                contentClassName="z-[100]"
+                                className="max-w-[min(320px,calc(100vw-2rem))] whitespace-normal rounded-xl px-3 py-2 text-left leading-relaxed"
+                                content={<span>
+                                  <span className="block font-medium">{current.q.provenance.kind === "ai" ? "Complemento de IA" : "Basada en tu material"}</span>
+                                  {current.q.provenance.kind === "material" && <span className="mt-1 block">{current.q.provenance.references.map(r => `${r.file}, ${r.location}`).join(" · ")}</span>}
+                                  <span className="mt-1 block">La procedencia no garantiza exactitud.</span>
+                                </span>}
+                              >
+                                <button type="button" aria-label="Ver procedencia" className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                  <Info aria-hidden="true" className="size-4" />
+                                  <span>Ver procedencia</span>
+                                </button>
+                              </Tooltip>
+                            </div>
+                          )}
                         </motion.div>
                       )}
                     </motion.div>
@@ -1534,4 +1559,8 @@ export function QuizModal({
       )}
     </AnimatePresence>
   );
+}
+
+export function QuizModal(props: QuizModalProps) {
+  return props.deck.mode === "exam" ? <ExamModal {...props} /> : <StudyQuizModal {...props} />;
 }

@@ -14,6 +14,10 @@ with a short pointer at `/llms.txt`. The landing page links to it as "For
 agents", and the `<head>` carries
 `<link rel="alternate" type="text/markdown" href="/agents.md">`.
 
+The deck schema also accepts an optional `cover: { image, alt, credit? }`
+for a credited image on the quiz introduction; decks created before this
+field was added remain valid.
+
 ## The tools at a glance
 
 | Tool | Purpose |
@@ -26,7 +30,7 @@ agents", and the `<head>` carries
 | `add_flashcards` | Append cards to a level of a draft, in batches; ids assigned. |
 | `publish_flashcard_deck` | Validate, save, and open a draft. |
 | `import_flashcards` | Save a complete deck in one call. |
-| `generate_flashcards` | Have the server's Claude write a deck (needs a key). |
+| `generate_flashcards` | Have the server's configured provider write a deck (needs credentials). |
 | `share_flashcard_deck` | A short link (`/d/<id>`) to a saved deck, stored in Vercel Blob (needs a store). |
 | `play_flashcards` | Open the quiz on a deck. |
 | `delete_flashcard_deck` | Remove a saved deck or draft. |
@@ -97,3 +101,22 @@ await call("start_flashcard_deck", { title: "Tides", headline: "Do you know the 
 await call("add_flashcards", { slug: "tides", level: "shore", cards: [{ kind: "truefalse", statement: "The Moon causes the tides on its own.", answer: false, fact: "The Sun contributes about a third of the tidal force." }] });
 await call("publish_flashcard_deck", { slug: "tides" });
 ```
+
+## Provider and material compatibility
+
+Workers AI is the default server provider; Anthropic remains selectable with
+`FLASHCARDS_PROVIDER=anthropic`. The generation tool's `{topic, notes?}` input
+is unchanged. `/api/decks/plan` and `/api/decks/level` additionally accept
+`sources: [{id, file, location, text}]` and `cardCount: 10 | 20 | 30` for the
+material UI. They return optional `usage: {input, output}` token counts.
+Errors distinguish `credentials`, `quota`, `temporary`, `format`, and `refused`.
+
+The deck schema adds optional card `provenance` and deck `sharing: "manual"`.
+These fields survive imports, storage and explicit shares. Original document
+text is not part of the deck. The upload UI does not add or change tool names.
+See README for extraction limits, setup and privacy details.
+
+Los formatos aceptan `mode?: "study" | "exam"` (estudio por defecto) y
+`sourceDeck?: { slug, title, questionId }` en cada tarjeta. Los exámenes tienen
+un único grupo visible y sin tiempo y corrigen al final. Importar, obtener,
+publicar y compartir preservan estos campos; no es necesario generar con IA.

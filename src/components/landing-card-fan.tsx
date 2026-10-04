@@ -86,7 +86,7 @@ const DRAG_MOTION = {
 };
 
 function previewOptions(question: IllustratedCard): string[] {
-  if (question.kind === "truefalse") return ["True", "False"];
+  if (question.kind === "truefalse") return ["Verdadero", "Falso"];
   const [correct, ...others] = question.options;
   return others.length ? [others[0], correct, ...others.slice(1)] : [correct];
 }
@@ -99,8 +99,8 @@ function correctAnswer(question: IllustratedCard): string {
   return question.kind === "choice"
     ? question.options[0]
     : question.answer
-      ? "True"
-      : "False";
+      ? "Verdadero"
+      : "Falso";
 }
 
 function CloseGlyph() {
@@ -203,9 +203,9 @@ export function LandingCardFan({
   const resolved = selected !== null;
   const feedback =
     selected === answer
-      ? `Correct. ${activeQuestion?.fact ?? ""}`
+      ? `Correcto. ${activeQuestion?.fact ?? ""}`
       : selected
-        ? `Not quite. ${answer} is correct.`
+        ? `La respuesta correcta es ${answer}.`
         : "";
 
   const openPreview = (index: number) => {
@@ -257,7 +257,7 @@ export function LandingCardFan({
                     triggerRefs.current[index] = node;
                   }}
                   type="button"
-                  aria-label={`Open ${artwork} flashcard example`}
+                  aria-label={`Abrir tarjeta de ejemplo: ${artwork}`}
                   aria-haspopup="dialog"
                   aria-expanded={activeIndex === index}
                   onClick={() => openPreview(index)}
@@ -370,14 +370,14 @@ export function LandingCardFan({
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={picture}
-                          alt={activeQuestion.imageCredit?.title ?? "Flashcard artwork"}
+                          alt={activeQuestion.imageCredit?.title ?? "Imagen de la tarjeta"}
                           className="size-full object-cover"
                         />
                         <Dialog.Close asChild>
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label="Close"
+                            aria-label="Cerrar"
                             className="absolute right-3 top-3 rounded-full bg-black/40 text-white shadow-sm backdrop-blur-md hover:text-white"
                           >
                             <CloseGlyph />
@@ -400,10 +400,10 @@ export function LandingCardFan({
                         className="p-5"
                       >
                         <Dialog.Title id={titleId} className="sr-only">
-                          {activeQuestion.imageCredit?.title ?? "Artwork"} flashcard
+                          {activeQuestion.imageCredit?.title ?? "Imagen"}: tarjeta de ejemplo
                         </Dialog.Title>
                         <Dialog.Description id={descriptionId} className="sr-only">
-                          Pick the answer.
+                          Elige una respuesta.
                         </Dialog.Description>
 
                         <p className="font-heading text-[26px] leading-[1.1]">

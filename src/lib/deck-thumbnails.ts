@@ -11,25 +11,25 @@ const LANDING_DESIGN_PREVIEWS = [
   {
     id: "landing-bezier-curve",
     kind: "choice",
-    prompt: "How many control points shape a cubic Bézier curve?",
-    options: ["Two", "One", "Three", "Four"],
+    prompt: "¿Cuántos puntos de control dan forma a una curva Bézier cúbica?",
+    options: ["Dos", "Uno", "Tres", "Cuatro"],
     fact:
-      "A cubic Bézier curve uses two endpoints and two control points to define its shape.",
+      "Una curva Bézier cúbica usa dos extremos y dos puntos de control para definir su forma.",
     image: "/images/bezier-curve.svg",
     imageAlt:
-      "A curved line with two endpoints and two offset control points",
-    imageCredit: { title: "Cubic Bézier curve" },
+      "Una curva con dos extremos y dos puntos de control desplazados",
+    imageCredit: { title: "Curva Bézier cúbica" },
   },
   {
     id: "landing-oklch-color",
     kind: "choice",
-    prompt: "Which OKLCH value controls color intensity?",
-    options: ["Chroma", "Lightness", "Hue", "Opacity"],
+    prompt: "¿Qué valor de OKLCH controla la intensidad del color?",
+    options: ["Croma", "Luminosidad", "Tono", "Opacidad"],
     fact:
-      "In OKLCH, L is lightness, C is chroma, and H is the hue angle.",
+      "En OKLCH, L representa la luminosidad, C el croma y H el ángulo del tono.",
     image: "/images/oklch-color-space.svg",
-    imageAlt: "A spectrum of vivid colors arranged at even lightness",
-    imageCredit: { title: "OKLCH color space" },
+    imageAlt: "Un espectro de colores vivos con luminosidad uniforme",
+    imageCredit: { title: "Espacio de color OKLCH" },
   },
 ] satisfies IllustratedCard[];
 
@@ -48,8 +48,16 @@ export function deckIllustratedCards(levels: QuizLevel[]): IllustratedCard[] {
 export function landingIllustratedCards(
   levels: QuizLevel[]
 ): IllustratedCard[] {
-  const deckCards = deckIllustratedCards(levels);
-  const middleCard = deckCards[1] ?? deckCards[0];
+  void levels;
+  const middleCard: IllustratedCard = {
+    id: "landing-starry-night", kind: "choice",
+    prompt: "¿A qué movimiento pertenece La noche estrellada?",
+    options: ["Posimpresionismo", "Impresionismo", "Surrealismo", "Romanticismo"],
+    fact: "La noche estrellada, de Van Gogh, es una obra del posimpresionismo.",
+    image: "/images/oD7sywyaLRVRE8ocCeCBBE5dPdk.png",
+    imageAlt: "La noche estrellada, pintura de Vincent van Gogh",
+    imageCredit: { title: "La noche estrellada", author: "Vincent van Gogh" },
+  };
 
   return middleCard
     ? [LANDING_DESIGN_PREVIEWS[0], middleCard, LANDING_DESIGN_PREVIEWS[1]]

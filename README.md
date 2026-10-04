@@ -32,8 +32,8 @@ Built with **Next.js 16 (App Router)**, **Tailwind CSS 4**, and
   until the reveal.
 - **Share any deck by link.** A deck written in the browser is stored under a
   short link (`/d/<id>`) that unfurls with its headline and pictures. The link
-  is made in the background while you play and sits beside every Play button.
-- **Your decks, listed.** The built-in deck and the ones written in this
+  is created only when you choose to share the deck.
+- **Your decks, listed.** The decks saved in this
   browser, each with Play and a link icon that copies the share link.
 - **The quiz itself**: sequential sets of ten cards, each unlocked by passing
   the one before, a hidden bonus set on a shorter clock; three card kinds
@@ -65,8 +65,63 @@ cp .env.example .env
 
 | Variable | Purpose |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Lets the site write decks itself through the `generate_flashcards` tool and `npm run generate`. Without it, agents write the cards with the authoring tools. |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Enable Workers AI generation (default provider). |
+| `ANTHROPIC_API_KEY` | Optional generation with `FLASHCARDS_PROVIDER=anthropic`. |
 | `BLOB_READ_WRITE_TOKEN` | A Vercel Blob store for shared decks (`/d/<id>`). Without it, sharing is quietly unavailable. On Vercel, link a Blob store to the project and `vercel env pull`. |
+
+## Learn from your own material (no Anthropic key)
+
+Choose **Crear desde mi material** on the home page. Load up to five `.md`,
+`.pdf` or `.pptx` files, review the extracted text, exclude sections, enter
+a topic and choose 10, 20 or 30 Spanish flashcards. Each set has ten cards,
+no timer and a passing score of seven. You can cancel; completed sets remain
+saved even if a later request fails.
+
+Fluid Functionalism is already configured through the `@fluid` registry.
+The material flow reuses its buttons, Base UI switches and scroll area.
+
+Set up a free Cloudflare account, obtain a Workers AI API token and Account
+ID, and put these values in **`.env.local`**:
+
+```dotenv
+FLASHCARDS_PROVIDER=cloudflare
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+CLOUDFLARE_API_TOKEN=your-workers-ai-token
+FLASHCARDS_MODEL=@cf/qwen/qwen3-30b-a3b-fp8
+```
+
+The server calls the [Workers AI REST API](https://developers.cloudflare.com/workers-ai/get-started/rest-api/).
+The token stays on the server; the app can continue running locally with
+Next.js. Keep the Cloudflare account on **Workers Free**: it includes 10,000
+neurons daily, resetting at 00:00 UTC. This app does not enable a paid plan,
+but it cannot prevent charges if you independently configure a paid account.
+See [current pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/).
+Reported tokens are shown when provided by the API, not an exact remaining quota.
+
+Extraction happens in your browser. Original files and extracted text remain
+in session memory, and only selected text is sent to the provider. Only the
+finished cards and their references are stored in localStorage. Closing the
+material panel clears its document text. Material decks are **never shared
+automatically**; using a share button or the share tool explicitly uploads
+the deck, including its questions and source filenames, if Blob is configured.
+
+Limits: five files, 20 MiB each, 100 MiB of decompressed PPTX XML, and 24,000
+UTF-8 bytes for the selected material including reference labels. Oversized
+selections must be reduced; the app never silently truncates them. PDF text
+is read page by page; PPTX text follows presentation order and includes speaker
+notes; Markdown is divided at headings. Scans, diagrams and image contents
+are not interpreted. Review extraction warnings and the text order.
+
+Cards can supplement the documents using model knowledge. Every material-flow
+card is marked **Basada en tu material**, with page/slide/section references,
+or **Complemento de IA**. Provenance is not a guarantee of factual accuracy.
+The provider response is validated locally; one repair or JSON-mode fallback
+is allowed, without automatic model changes. Qwen's actual structured-output
+behavior still needs a smoke test with your account credentials.
+
+Anthropic remains optional: set `FLASHCARDS_PROVIDER=anthropic`, provide its
+credentials and optionally select its model. Existing decks and agent tools
+continue to work without any generation credentials.
 
 ## Make it yours
 
@@ -93,7 +148,7 @@ file and the built-in deck is about your topic.
 npm run generate -- "The French Revolution"
 ```
 
-Claude writes a complete deck in the house style (ramping sets, a mix of card
+The configured provider writes a complete deck in the house style (ramping sets, a mix of card
 kinds, one-line facts, pictures for the things a card shows, a hidden bonus
 set) and saves it to `src/data/deck.json`. Add `--notes "..."` for images or
 constraints, or `--out decks/revolution.json` to keep the current deck.
@@ -150,9 +205,11 @@ that runs `next start`. Environment variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Enables deck generation (the generate tool and the CLI). |
+| `FLASHCARDS_PROVIDER` | `cloudflare` (default) or `anthropic`. |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Server-side Workers AI credentials. |
+| `ANTHROPIC_API_KEY` | Credentials for the optional Anthropic provider. |
 | `BLOB_READ_WRITE_TOKEN` | Enables shared deck links (`/d/<id>`). |
-| `FLASHCARDS_MODEL` | Which Claude model writes decks. Default `claude-opus-5`. |
+| `FLASHCARDS_MODEL` | Default `@cf/qwen/qwen3-30b-a3b-fp8` for Cloudflare; `claude-opus-5` for Anthropic. |
 | `FLASHCARDS_EFFORT` | Thinking depth for the cards: `low`, `medium` (default), `high`. |
 | `FLASHCARDS_IMAGES` | `off` keeps generated decks text-only (default: attach Wikipedia lead images). |
 | `NEXT_PUBLIC_SITE_URL` | Absolute site URL for OpenGraph image URLs on hosts other than Vercel. |
@@ -202,7 +259,7 @@ npm run dev          # start the dev server
 npm run build        # production build (type-check + lint + prerender)
 npm run test         # vitest: schema, store, sharing, routes, lookups, tools
 npm run check-deck   # validate src/data/deck.json (or any file you pass)
-npm run generate     # write a deck with Claude: npm run generate -- "<topic>"
+npm run generate     # write a deck with the configured provider: npm run generate -- "<topic>"
 npm run find-images  # licensed pictures for a card: npm run find-images -- "<query>"
 npm run typecheck    # tsc
 npm run lint         # eslint
@@ -214,3 +271,39 @@ The quiz, its motion, and the example deck come from
 [Art Timeline](https://art-timeline.com/) by
 [@micka_design](https://x.com/micka_design). Fonts: Inter and Instrument
 Serif (SIL OFL). Licensed MIT.
+
+### Material, exámenes y guardado
+
+**Añadir material** elige automáticamente cómo leer cada archivo. Con
+`FIRECRAWL_API_KEY`, los PDF/PPTX de hasta 4 MiB se envían a Firecrawl y devuelven
+Markdown (PDF por página, extracción automática/OCR). Los archivos mayores de
+4 MiB, los MD y los archivos sin Firecrawl configurado se leen en el navegador.
+El límite por archivo sigue siendo 20 MiB. No hay selector de lectura.
+No almacenamos documentos originales en Blob. Firecrawl usa créditos propios;
+si falla, puedes elegir lectura local sin volver a seleccionar los archivos.
+Cancelar descarta la respuesta; una conversión ya enviada puede consumir créditos
+aunque cierres el recorrido.
+En PPTX remoto las referencias son secciones: revisa el contenido, ya que puede
+omitir notas y no garantiza referencias por diapositiva.
+
+**Crear examen** combina al menos dos mazos guardados, incluyendo todos sus
+grupos, en una copia independiente. No usa IA. Mezcla todas las preguntas y
+opciones, sin tiempo, y muestra respuestas y explicaciones al final. El umbral
+es 70 %. Reintentar crea una nueva mezcla; no se guardan intentos incompletos.
+
+Los mazos, exámenes y mejores puntuaciones se guardan en `localStorage` del mismo
+navegador y sitio. Persisten al cerrar el navegador; borrar sus datos los elimina.
+No hay cuentas ni sincronización entre dispositivos. Los fallos de guardado se
+comunican. Abrir un enlace `/d/<código>` guarda una copia local y abre el mazo.
+Compartir es explícito: Vercel Blob conserva un JSON público con tarjetas y
+referencias, sin los apuntes originales. Un mazo modificado obtiene un enlace
+nuevo. Los enlaces requieren `BLOB_READ_WRITE_TOKEN`; no hay campo de código.
+
+Qwen permanece por defecto en Workers AI Free: la cuota diaria de 10,000
+neuronas pertenece a la cuenta y se comparte entre visitantes. GPT-6 Luna,
+`openai/gpt-6-luna`, es externo y requiere facturación/credenciales separadas,
+no la cuota gratuita de neuronas. Con 86,030 tokens de entrada y 26,670 de salida,
+las tarifas de contexto corto consultadas el 3 de octubre de 2026 estiman
+US$0.02194, sin caché. Cambiar el nombre del modelo no configura su integración.
+Fuentes: [Cloudflare](https://developers.cloudflare.com/ai/models/openai/gpt-6-luna/)
+y [Firecrawl Parse](https://docs.firecrawl.dev/features/parse).

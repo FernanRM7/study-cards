@@ -10,7 +10,7 @@
 // in Node (the generator, the CLI); Node requests carry a User-Agent as
 // Wikimedia asks.
 
-import type { ImageCredit, PictureHint, RevealPictureHint } from "./deck";
+import type { DeckCover, ImageCredit, PictureHint, RevealPictureHint } from "./deck";
 
 export interface ImageCandidate {
   /** A resized copy (about `width` px wide) to put on the card. */
@@ -278,6 +278,32 @@ export function creditFor(c: ImageCandidate): ImageCredit {
   if (c.author) credit.author = c.author;
   if (c.license) credit.license = c.license;
   return credit;
+}
+
+/** Resolve a topic cover from real, credited Commons files. The planner's
+ * short English query avoids searching with a whole Spanish sentence. */
+export async function findDeckCover(
+  topic: string,
+  { query, signal }: { query?: string; signal?: AbortSignal } = {}
+): Promise<DeckCover | null> {
+  const lookupSignal = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(10_000)])
+    : AbortSignal.timeout(10_000);
+  const webTopic = /\bweb\b|\bpwa\b|\bhtml\b|\bcss\b|javascript|frontend|front.end|backend|back.end|app.shell|manifest/i.test(`${topic} ${query ?? ""}`);
+  const queries = [...new Set([query?.trim(), topic.trim(), webTopic ? "web development" : undefined].filter((value): value is string => !!value))];
+  for (const search of queries) {
+    if (signal?.aborted) signal.throwIfAborted();
+    try {
+      const candidates = (await commonsSearch(search, { limit: 12, width: 1200, signal: lookupSignal }))
+        .filter(image => !!image.license && (!image.width || image.width >= 240));
+      const image = candidates[Math.floor(Math.random() * candidates.length)];
+      if (image) return { image: image.url, alt: image.description ?? image.title, credit: creditFor(image) };
+    } catch {
+      if (signal?.aborted) signal.throwIfAborted();
+      if (lookupSignal.aborted) break;
+    }
+  }
+  return null;
 }
 
 /** Resolve a card's `picture` hint to a real, credited image on the card:

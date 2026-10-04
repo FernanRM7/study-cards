@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { attachPicture, creditFor, findImages, wikipediaLeadImage, type ImageCandidate } from "@/lib/image-search";
+import { attachPicture, creditFor, findDeckCover, findImages, wikipediaLeadImage, type ImageCandidate } from "@/lib/image-search";
 import { choice, order, trueFalse } from "./fixtures";
 
 // Wikipedia and Commons, faked: the summary endpoint names the lead image,
@@ -137,6 +137,29 @@ describe("findImages", () => {
     ]);
     expect(found[0].origin).toBe("wikipedia");
     expect(found[1].origin).toBe("commons");
+  });
+});
+
+describe("findDeckCover", () => {
+  it("falls back from a Spanish web lesson title to a broad visual subject", async () => {
+    const mock = fakeFetch(url => new URL(url).searchParams.get("gsrsearch") === "web development" ? imageInfoFor("Editor.jpg", "CC BY-SA 4.0") : { query: { pages: {} } });
+    const cover = await findDeckCover("¿Conoces las aplicaciones web progresivas?");
+    expect(cover).toMatchObject({ alt: "The Work", credit: { license: "CC BY-SA 4.0", author: "Some Painter" } });
+    expect(mock).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the planner's English query and does not select uncredited files", async () => {
+    const mock = fakeFetch(() => imageInfoFor("Cell.jpg", ""));
+    expect(await findDeckCover("Biología", { query: "cell microscope" })).toBeNull();
+    expect(new URL(String(mock.mock.calls[0][0])).searchParams.get("gsrsearch")).toBe("cell microscope");
+  });
+
+  it("does not fetch when generation was cancelled", async () => {
+    const mock = fakeFetch(() => imageInfoFor("Editor.jpg"));
+    const controller = new AbortController();
+    controller.abort();
+    await expect(findDeckCover("Web", { signal: controller.signal })).rejects.toThrow();
+    expect(mock).not.toHaveBeenCalled();
   });
 });
 

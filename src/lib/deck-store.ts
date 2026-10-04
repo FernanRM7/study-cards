@@ -34,10 +34,12 @@ function read(): Deck[] {
   return cacheDecks;
 }
 
-function write(decks: Deck[]) {
+function write(decks: Deck[], requirePersistence = false) {
   try {
     localStorage.setItem(KEY, JSON.stringify(decks));
-  } catch {}
+  } catch {
+    if (requirePersistence) throw new Error("No se pudo guardar el mazo en este navegador. Revisa el espacio disponible y los permisos de almacenamiento.");
+  }
   window.dispatchEvent(new Event(EVENT));
 }
 
@@ -51,13 +53,13 @@ export function getSavedDeck(slug: string): Deck | undefined {
 }
 
 /** Insert or replace by slug. */
-export function saveDeck(deck: Deck) {
+export function saveDeck(deck: Deck, requirePersistence = true) {
   const others = read().filter((d) => d.slug !== deck.slug);
-  write([...others, deck]);
+  write([...others, deck], requirePersistence);
 }
 
 export function removeDeck(slug: string) {
-  write(read().filter((d) => d.slug !== slug));
+  write(read().filter((d) => d.slug !== slug), true);
 }
 
 /** A slug nobody else uses, among the given taken ones. */

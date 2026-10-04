@@ -24,6 +24,12 @@ describe("parseDeck", () => {
     expect(deck.levels[0].hidden).toBe(false);
   });
 
+  it("accepts an optional credited deck cover and keeps coverless decks valid", () => {
+    const cover = { image: "https://upload.wikimedia.org/example.jpg", alt: "Código en pantalla", credit: { title: "Editor", license: "CC BY-SA 4.0", source: "https://commons.wikimedia.org/wiki/File:Example.jpg" } };
+    expect(parseDeck(rawDeck({ cover })).cover).toEqual(cover);
+    expect(parseDeck(rawDeck()).cover).toBeUndefined();
+  });
+
   it("refuses a passScore higher than a level's card count", () => {
     expect(() => parseDeck(rawDeck({ passScore: 5 }))).toThrow(/passScore \(5\) is higher/);
   });

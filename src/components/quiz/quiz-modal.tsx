@@ -36,7 +36,7 @@ import { surfaceClasses } from "@/lib/surface-classes";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Info } from "lucide-react";
-import { DynamicIsland } from "@/components/ui/dynamic-island";
+import { DynamicIsland, TIMED_QUESTION_SECONDS } from "@/components/ui/dynamic-island";
 import { Switch } from "@/components/ui/switch";
 
 // ── Progress persistence ────────────────────────────────────
@@ -838,7 +838,6 @@ function StudyQuizModal({
   // The deck drives everything below: levels, pass mark, countdown length.
   const QUIZ_LEVELS = deck.levels;
   const PASS_SCORE = deck.passScore;
-  const TIMER_SECONDS = deck.timerSeconds;
   const STORAGE_KEY = `${deck.slug}-quiz-v1`;
 
   const XIcon = useIcon("x");
@@ -852,7 +851,6 @@ function StudyQuizModal({
   // Per-question outcome, indexed by question — drives the dot colors.
   const [results, setResults] = useState<boolean[]>([]);
   const [revealed, setRevealed] = useState(false);
-  const [timedOut, setTimedOut] = useState(false);
   // Timed levels open on a briefing slide; the clock only runs after Start.
   const [showTimedIntro, setShowTimedIntro] = useState(false);
   // Whether the run that just ended unlocked the next set of cards.
@@ -902,7 +900,6 @@ function StudyQuizModal({
     revealedRef.current = false;
     setHeldHeight(null);
     setRevealed(false);
-    setTimedOut(false);
     setOrderReady(false);
     setConfirmExit(false);
     setShowTimedIntro(false);
@@ -941,7 +938,6 @@ function StudyQuizModal({
     if (revealedRef.current) return;
     revealedRef.current = true;
     holdCardHeight();
-    setTimedOut(true);
     setRevealed(true);
     setResults((prev) => {
       const next = [...prev];
@@ -957,7 +953,6 @@ function StudyQuizModal({
       revealedRef.current = false;
       setHeldHeight(null);
       setRevealed(false);
-      setTimedOut(false);
       setOrderReady(false);
       return;
     }
@@ -1093,9 +1088,8 @@ function StudyQuizModal({
           transition={spring.slow}
         >
           <div className="flex min-h-full flex-col p-6">
-            {/* Header. The run view goes headerless — closing happens via the
-                Exit button in the bottom bar, and the countdown lives there
-                too. */}
+            {/* Intro/result close control. During a run, the timer occupies its
+                own top row; Exit remains in the bottom bar. */}
             {view !== "run" && (
               <div className="flex items-center justify-end gap-3 pt-1">
                 {/* Only the close control up top: the intro and result views
@@ -1106,6 +1100,11 @@ function StudyQuizModal({
                 </Button>
               </div>
             )}
+
+            {view === "run" && current && !showTimedIntro && againstClock && <div className="mb-5 flex shrink-0 items-center justify-start">
+              <DynamicIsland key={`${attempt}-${qIndex}`} active={open && !confirmExit && !revealed}
+                seconds={TIMED_QUESTION_SECONDS} onTimeout={timeout} />
+            </div>}
 
             {/* Body. The headerless run view fills the fixed-height panel and
                 centers short text cards vertically; image cards stay
@@ -1166,8 +1165,6 @@ function StudyQuizModal({
 
                   {/* Start pins to the bottom. */}
                   <div className="w-full space-y-4">
-                    <Switch label="Modo contrarreloj" checked={againstClock} onToggle={() => setAgainstClock(value => !value)} />
-                    {againstClock && <p className="text-xs text-muted-foreground">{QUIZ_LEVELS[startIndex].timerSeconds ?? TIMER_SECONDS} segundos por tarjeta.</p>}
                     <Button
                       variant="primary"
                       size="lg"
@@ -1181,20 +1178,20 @@ function StudyQuizModal({
                           ? "Keep going"
                           : "Play again"}
                     </Button>
+                    <div className="flex justify-end">
+                      <Switch className="flex-row-reverse" label="Modo contrarreloj" checked={againstClock} onToggle={() => setAgainstClock(value => !value)} />
+                    </div>
+                    {againstClock && <p className="text-right text-xs text-muted-foreground">{TIMED_QUESTION_SECONDS} segundos por tarjeta.</p>}
                   </div>
                 </motion.div>
               )}
 
               {view === "run" && current && showTimedIntro && (
-                <TimedIntro seconds={level.timerSeconds ?? TIMER_SECONDS} />
+                <TimedIntro seconds={TIMED_QUESTION_SECONDS} />
               )}
 
               {view === "run" && current && !showTimedIntro && (
                 <div>
-                  {againstClock && <div className="mb-5 flex justify-start">
-                    <DynamicIsland key={`${attempt}-${qIndex}`} active={open && !confirmExit && !revealed}
-                      seconds={level.timerSeconds ?? TIMER_SECONDS} onTimeout={timeout} />
-                  </div>}
                     <motion.div
                       key={current.q.id}
                       ref={cardRef}
@@ -1260,18 +1257,11 @@ function StudyQuizModal({
                           aria-hidden={!revealed}
                           className="mt-4"
                         >
-                          {/* px-4 matches the answer rows' inner padding so
-                              the fact text aligns with their labels. */}
-                          <p className="px-4 text-[15px] leading-relaxed text-muted-foreground">
-                            {timedOut && (
-                              <span className="text-destructive">
-                                Time&#39;s up.{" "}
-                              </span>
-                            )}
+                          <p className="text-[15px] leading-relaxed text-muted-foreground">
                             {current.q.fact}
                           </p>
                           {current.q.provenance && (
-                            <div className="mt-2 px-4">
+                            <div className="mt-2">
                               <Tooltip
                                 side="top"
                                 delayDuration={150}
@@ -1283,7 +1273,7 @@ function StudyQuizModal({
                                   <span className="mt-1 block">La procedencia no garantiza exactitud.</span>
                                 </span>}
                               >
-                                <button type="button" aria-label="Ver procedencia" className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <button type="button" aria-label="Ver procedencia" className="inline-flex min-h-9 items-center gap-1.5 rounded-full -ms-3 px-3 py-2 text-xs text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                   <Info aria-hidden="true" className="size-4" />
                                   <span>Ver procedencia</span>
                                 </button>
@@ -1506,7 +1496,7 @@ function StudyQuizModal({
                 exit={{ opacity: 0, transition: { duration: 0.12 } }}
                 transition={{ duration: 0.16 }}
                 role="alertdialog"
-                aria-label="Leave the quiz?"
+                aria-label="¿Salir de la prueba?"
               >
                 <motion.div
                   className={cn(
@@ -1519,10 +1509,10 @@ function StudyQuizModal({
                   transition={spring.moderate}
                 >
                   <p className="font-heading text-[22px] leading-none text-foreground">
-                    Leave the quiz?
+                    ¿Salir de la prueba?
                   </p>
                   <p className="mt-2 text-[15px] text-muted-foreground">
-                    Your progress in this run will be lost.
+                    Perderás el progreso de este intento.
                   </p>
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <Button
@@ -1532,7 +1522,7 @@ function StudyQuizModal({
                       onClick={() => setConfirmExit(false)}
                       autoFocus
                     >
-                      Keep playing
+                      Continuar
                     </Button>
                     <Button
                       variant="primary"
@@ -1540,7 +1530,7 @@ function StudyQuizModal({
                       className="rounded-full"
                       onClick={() => onOpenChange(false)}
                     >
-                      Leave
+                      Salir
                     </Button>
                   </div>
                 </motion.div>

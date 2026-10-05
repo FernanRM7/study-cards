@@ -5,10 +5,13 @@ import { motion, useReducedMotion } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { AskUserQuestions, type AskUserAnswer, type AskUserQuestion } from "@/components/ui/ask-user-questions";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { suggestMaterial } from "@/lib/suggest-material";
 import { Progress } from "@/components/ui/progress";
+import { materialBatches, materialChapters } from "@/lib/material-review";
 import { MaterialReview } from "@/components/material-review";
 import { buildDeck, type DeckBuild } from "@/lib/create-deck";
-import { MaterialSchema, sourceBytes, type ExtractedMaterial } from "@/lib/material";
+import { MaterialSchema, sourceBytes, type ExtractedMaterial, type SourceFragment } from "@/lib/material";
 import { readMaterial, RemoteMaterialError } from "@/lib/read-material";
 import type { Deck } from "@/lib/deck";
 import { useIcon } from "@/lib/icon-context";
@@ -24,7 +27,7 @@ const questions: AskUserQuestion[] = [
     freeText: true,
     freeTextMultiline: false,
     freeTextPlaceholder: "Por ejemplo: el sistema solar",
-    freeTextValidate: value => value.trim().length < 2 ? "Escribe al menos dos caracteres." : undefined,
+    freeTextValidate: value => value.trim().length < 2 ? "Escribe al menos dos caracteres." : value.trim().length > 120 ? "Escribe un objetivo más breve." : undefined,
     skippable: false,
     nextLabel: "Continuar",
   },
@@ -66,6 +69,20 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
   onBusyChange: (busy: boolean) => void;
 }) {
   const id = useId();
+  const [clefAvailable, setClefAvailable] = useState(false);
+  const [useClef, setUseClef] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestionMessage, setSuggestionMessage] = useState("");
+  const [suggestedBlocks, setSuggestedBlocks] = useState<SourceFragment[][] | null>(null);
+  const analysisController = useRef<AbortController | null>(null);
+  const analyzedTopic = useRef<string | null>(null);
+  const manualSelection = useRef<{ block: number; selections: Record<number, Set<string>> } | null>(null);
+  useEffect(() => {
+    const abort = new AbortController();
+    void fetch("/api/material/suggest", { signal: abort.signal }).then(r => r.ok ? r.json() : null)
+      .then(data => { if (!abort.signal.aborted) setClefAvailable(data?.available === true); }).catch(() => {});
+    return () => { abort.abort(); analysisController.current?.abort(); };
+  }, []);
   const [remoteAvailable, setRemoteAvailable] = useState(false);
   const [localRetry, setLocalRetry] = useState(false);
   const remoteCapability = useRef<Promise<boolean> | null>(null);
@@ -84,9 +101,16 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
   const [readyDialogOpen, setReadyDialogOpen] = useState(false);
   const [stage, setStage] = useState<Stage>("upload");
   const [material, setMaterial] = useState<ExtractedMaterial | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [activeBlock, setActiveBlock] = useState(0);
+  const [blockSelections, setBlockSelections] = useState<Record<number, Set<string>>>({});
+  const selected = useMemo(() => blockSelections[activeBlock] ?? new Set<string>(), [blockSelections, activeBlock]);
+  const setSelected = (next: Set<string>) => setBlockSelections(current => ({ ...current, [activeBlock]: next }));
+  const blocks = useMemo(() => suggestedBlocks ?? (!material ? [] : MaterialSchema.safeParse(material.sources).success
+    ? [material.sources] : materialBatches(materialChapters(material.sources))), [material, suggestedBlocks]);
+  const visibleSources = blocks[activeBlock] ?? [];
   const [answers, setAnswers] = useState<Record<string, AskUserAnswer>>({});
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [questionsNavigation, setQuestionsNavigation] = useState<HTMLDivElement | null>(null);
   const [topic, setTopic] = useState("");
   const [count, setCount] = useState<CardCount>(10);
   const [extracting, setExtracting] = useState(false);
@@ -122,8 +146,12 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
         onRemoteStart: () => { attemptedRemote = true; },
       });
       abort.signal.throwIfAborted();
+      setUseClef(false); setSuggestedBlocks(null); setSuggestionMessage("");
+      analyzedTopic.current = null; manualSelection.current = null;
       setMaterial(result);
-      setSelected(new Set(MaterialSchema.safeParse(result.sources).success ? result.sources.map(source => source.id) : []));
+      const nextBlocks = MaterialSchema.safeParse(result.sources).success ? [result.sources] : materialBatches(materialChapters(result.sources));
+      setActiveBlock(0);
+      setBlockSelections(Object.fromEntries(nextBlocks.map((block, index) => [index, new Set(block.map(source => source.id))])));
       const initialTopic = topic || files[0]?.name.replace(/\.[^.]+$/, "").slice(0, 120) || "";
       setTopic(initialTopic);
       setAnswers(current => ({ ...current, topic: { questionId: "topic", selectedIds: [], otherText: initialTopic } }));
@@ -169,10 +197,46 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
     }
   };
 
+  const restoreManual = () => {
+    const previous = manualSelection.current;
+    if (previous) { setActiveBlock(previous.block); setBlockSelections(previous.selections); }
+    setSuggestedBlocks(null);
+    manualSelection.current = null; analyzedTopic.current = null;
+  };
+  const advanceQuestion = async (index: number) => {
+    if (index !== 1 || questionIndex !== 0 || !useClef || !material) { setQuestionIndex(index); return; }
+    if (analysisController.current) return;
+    if (analyzedTopic.current === topic.trim()) {
+      setQuestionIndex(1);
+      return;
+    }
+    const abort = new AbortController();
+    analysisController.current = abort;
+    setSuggesting(true); setSuggestionMessage(""); onBusyChange(true);
+    try {
+      const ids = await suggestMaterial(topic.trim(), material.sources, abort.signal,
+        (done, total) => { if (!abort.signal.aborted) setSuggestionMessage(`Revisando contenido… ${done} de ${total}`); });
+      abort.signal.throwIfAborted();
+      analyzedTopic.current = topic.trim();
+      if (!ids.size) { setSuggestionMessage("No encontramos una selección clara. Puedes continuar con tu selección manual."); return; }
+      manualSelection.current ??= { block: activeBlock, selections: blockSelections };
+      const nextBlocks = materialBatches(materialChapters(material.sources.filter(source => ids.has(source.id))));
+      setSuggestedBlocks(nextBlocks); setActiveBlock(0);
+      setBlockSelections(Object.fromEntries(nextBlocks.map((block, i) => [i, new Set(block.map(source => source.id))])));
+      setSuggestionMessage("");
+      setQuestionIndex(1);
+    } catch (cause) {
+      setSuggestionMessage(abort.signal.aborted ? "Se canceló el análisis. Tu selección sigue disponible."
+        : cause instanceof Error && !/zod|invalid|timeout/i.test(cause.message) ? cause.message : "No pudimos sugerir contenido. Usa tu selección manual.");
+    } finally {
+      analysisController.current = null; setSuggesting(false); onBusyChange(false);
+    }
+  };
+
   const onAnswersChange = (next: Record<string, AskUserAnswer>) => {
     setAnswers(next);
     const nextTopic = next.topic?.otherText;
-    if (nextTopic !== undefined) setTopic(nextTopic);
+    if (nextTopic !== undefined) { if (nextTopic.trim() !== topic.trim()) { restoreManual(); setSuggestionMessage(""); } setTopic(nextTopic); }
     const selectedCount = Number(next.count?.selectedIds[0]);
     if (selectedCount === 10 || selectedCount === 20 || selectedCount === 30) setCount(selectedCount);
   };
@@ -181,9 +245,11 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
   const transition = reduceMotion ? { duration: 0 } : spring.moderate;
   // Preserve unfinished work across navigation, but a finished deck is not a draft.
   const resetCreation = () => {
-    setStage("upload"); setMaterial(null); setSelected(new Set()); setAnswers({});
+    setStage("upload"); setMaterial(null); setBlockSelections({}); setActiveBlock(0); setAnswers({});
     setQuestionIndex(0); setTopic(""); setCount(10); setBuild(null); setError("");
     setPendingFiles([]); setLocalRetry(false); setReadyDialogOpen(false);
+    setUseClef(false); setSuggestedBlocks(null); setSuggestionMessage("");
+    manualSelection.current = null; analyzedTopic.current = null;
   };
   const study = () => {
     if (!build?.deck) return;
@@ -198,7 +264,7 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
   return <motion.section layout={reduceMotion ? false : "position"}
     transition={{ layout: panelTransition }} lang="es" className="mt-8 w-full" aria-label="Crear tarjetas desde tu material">
     <Button ref={trigger} variant="secondary" size={open ? "icon-lg" : "lg"} aria-label={open ? "Volver a mis mazos" : undefined} aria-expanded={open} aria-controls={`${id}-panel`}
-      disabled={disabled || extracting || stage === "generating"}
+      disabled={disabled || extracting || suggesting || stage === "generating"}
       onClick={event => {
         if (!open && stage === "ready") resetCreation();
         onOpenChange(!open, event.detail === 0);
@@ -246,10 +312,12 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
             <ul className="mt-2 list-disc space-y-1 pl-5">{material.warnings.map((warning, index) => <li key={index}>{friendlyError(warning)}</li>)}</ul>
           </details>}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="tertiary" disabled={extracting} onClick={() => setSelected(new Set(material.sources.map(source => source.id)))}>Incluir todo</Button>
+            <Button type="button" variant="tertiary" disabled={extracting} onClick={() => setSelected(new Set(visibleSources.map(source => source.id)))}>Incluir todo</Button>
             <Button type="button" variant="tertiary" disabled={extracting} onClick={() => setSelected(new Set())}>Quitar todo</Button>
           </div>
-          <MaterialReview sources={material.sources} selected={selected} onChange={setSelected} />
+
+          <MaterialReview blocks={suggestedBlocks ?? undefined} sources={material.sources} selected={selected} onChange={setSelected}
+            activeBlock={activeBlock} onBlockChange={setActiveBlock} />
           <p className="text-xs text-muted-foreground" aria-live="polite">{sources.length} secciones seleccionadas</p>
           {!valid && <p role="alert" className="text-sm text-destructive">{sources.length === 0 ? "Elige al menos una parte para continuar." : sourceBytes(sources) > 24_000 ? "Selecciona menos contenido para continuar." : "Selecciona menos partes para continuar."}</p>}
           <div className="flex flex-wrap justify-between gap-3 pt-1">
@@ -258,10 +326,10 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
           </div>
         </div>}
 
-        {stage === "questions" && <AskUserQuestions
+        {stage === "questions" && <div className="space-y-4"><div inert={suggesting || undefined}><AskUserQuestions
           questions={questions}
           currentIndex={questionIndex}
-          onCurrentIndexChange={setQuestionIndex}
+          onCurrentIndexChange={index => { void advanceQuestion(index); }}
           answers={answers}
           onAnswersChange={onAnswersChange}
           onComplete={completed => {
@@ -274,9 +342,20 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
           }}
           onBackAtStart={() => setStage("review")}
           backLabel="Atrás"
-          progressLabel={current => `Paso ${current + 2} de 5`}
+          showProgress={false}
+          advanceOnSelect={false}
+          navigationContainer={questionsNavigation}
           className="mx-auto"
-        />}
+        /></div>
+          {questionIndex === 0 && clefAvailable && <div className="space-y-2">
+            <Switch className="-ms-3" label="Sugerir contenido según mi objetivo" checked={useClef} disabled={!clefAvailable || suggesting}
+              onToggle={() => { if (useClef) restoreManual(); setUseClef(!useClef); setSuggestionMessage(""); }} />
+            {suggestionMessage && <p role="status" className="text-sm text-muted-foreground">{suggestionMessage}</p>}
+            {suggesting ? <Button variant="ghost" onClick={() => analysisController.current?.abort()}>Cancelar análisis</Button>
+              : suggestionMessage && !suggestedBlocks && <Button variant="secondary" onClick={() => setQuestionIndex(1)}>Continuar con mi selección</Button>}
+          </div>}
+          <div ref={setQuestionsNavigation} inert={suggesting || undefined} />
+        </div>}
 
         {stage === "confirm" && <div className="space-y-4">
           <div>

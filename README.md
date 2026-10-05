@@ -311,8 +311,8 @@ y [Firecrawl Parse](https://docs.firecrawl.dev/features/parse).
 
 ### Revisión de Markdown y nuevos intentos
 
-Los MD siempre se leen localmente, sin Firecrawl ni una llamada de IA para
-clasificarlos. La revisión agrupa capítulos y subtítulos; los archivos largos
+Los MD siempre se leen localmente, sin Firecrawl. La clasificación con IA es
+opcional y se activa únicamente desde el paso del objetivo. La revisión agrupa capítulos y subtítulos; los archivos largos
 ofrecen bloques seleccionables que respetan el límite conjunto de 24,000 bytes
 con sus referencias. El texto no se resume ni se trunca. Las secciones largas
 se dividen por párrafos, conservando tablas y bloques de código; si una tabla
@@ -325,8 +325,15 @@ portadas automáticas se han retirado; el campo `cover` se mantiene compatible
 con importación y enlaces antiguos, pero no se muestra en la introducción.
 
 Antes de estudiar o iniciar un examen, el switch Fluid **Modo contrarreloj**
-permite activar el tiempo por pregunta (20 segundos por defecto, o el valor
-del mazo/grupo). El contador compacto **DynamicIsland**, adaptado del componente
+permite activar un tiempo fijo de 10 segundos por pregunta. El contador compacto **DynamicIsland**, adaptado del componente
 MIT de [Bencho](https://bencho.dev/licence), aparece arriba a la izquierda y se
 pausa durante la confirmación de salida. En estudio el tiempo agotado revela
 la respuesta; en examen avanza sin revelar resultados hasta el final.
+
+### Sugerencias de contenido con Clef
+
+En el paso «¿Qué quieres aprender?» puedes activar «Sugerir contenido según mi objetivo». El Switch solo aparece con `CLEF_ENABLED=true` y credenciales disponibles. Con `CLEF_ENABLED=false` (o sin definirla), el Switch se oculta y el servidor bloquea las llamadas a Clef. En Vercel, cambia la variable y redespliega para aplicar el valor. El Switch está apagado inicialmente y requiere las mismas variables `CLOUDFLARE_ACCOUNT_ID` y `CLOUDFLARE_API_TOKEN`. La lectura de Markdown sigue siendo local; Firecrawl no recibe estos archivos.
+
+Al continuar se envía a Workers AI el texto de todas las secciones utilizables, incluidas las de otros bloques. `@cf/cloudflare/clef-flash` valora su relación con el objetivo y sus fundamentos. El análisis continúa directamente a la elección de cantidad, sin volver a la revisión. Qwen sigue creando las tarjetas; Clef no resume, divide ni modifica los documentos. Los grupos se calculan localmente conservando las referencias y los límites actuales.
+
+Las solicitudes se limitan a 64 secciones y al tamaño permitido por bloque para evitar la truncación del contexto. El análisis consume la cuota compartida de Workers AI. No activa servicios de pago ni reintenta llamadas automáticamente. Cancelar o encontrar un error conserva la selección manual. Apagar el Switch recupera la selección manual anterior. Cambiar de objetivo permite un nuevo análisis; continuar con el mismo objetivo reutiliza el resultado de la sesión.

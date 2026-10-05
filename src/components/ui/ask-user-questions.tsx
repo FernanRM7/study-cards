@@ -15,6 +15,7 @@ import {
   type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion, type Transition } from "framer-motion";
 import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
@@ -107,6 +108,10 @@ export interface AskUserQuestionsProps
   onSkip?: (questionId: string, currentIndex: number) => void;
   skipLabel?: string;
   backLabel?: string;
+  /** Optional composition hooks; defaults preserve the registry behavior. */
+  showProgress?: boolean;
+  navigationContainer?: HTMLElement | null;
+  advanceOnSelect?: boolean;
   progressLabel?: (current: number, total: number) => string;
   onBackAtStart?: () => void;
   /** Pins the flow to one step of the size ladder (default 36px, compact
@@ -151,6 +156,9 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
       onSkip,
       skipLabel = "Skip",
       backLabel = "Back",
+      showProgress = true,
+      navigationContainer,
+      advanceOnSelect = true,
       progressLabel = (current, total) => `Question ${current} of ${total}`,
       onBackAtStart,
       size,
@@ -453,9 +461,9 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
             skipped: false,
           },
         }));
-        goNext(snapshot);
+        if (advanceOnSelect) goNext(snapshot);
       },
-      [question, qId, writeAnswers, goNext]
+      [question, qId, writeAnswers, goNext, advanceOnSelect]
     );
 
     const handleMultiToggle = useCallback(
@@ -832,7 +840,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
     const showBack = (total > 1 && safeIndex > 0) || (!!onBackAtStart && safeIndex === 0);
     const showSkip = total > 1 && isSkippable;
     // freeText commits through the same bottom submit button as multi-select.
-    const showSubmit = isMulti || isFreeText;
+    const showSubmit = isMulti || isFreeText || !advanceOnSelect;
     const showFooter = showBack || showSkip || showSubmit;
 
     // ── Roving tabindex ──────────────────────────────────────────
@@ -1223,6 +1231,164 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
       </div>
     );
 
+    const footer = showFooter ? (
+      <div
+        className={cn(
+          navigationContainer !== undefined ? "pt-1" : "pt-1 " + (compact ? "px-3.5 sm:px-4 pb-1.5" : "px-4 sm:px-5 pb-2")
+        )}
+      >
+        <div className={navigationContainer !== undefined ? "flex flex-wrap items-center justify-between gap-3" : "flex items-center justify-between gap-2 -mx-2 sm:-mx-3"}>
+          {/* Each button is wrapped in a motion.div so it fades + scales
+              when it appears/disappears (e.g. Continue on multi-select).
+              popLayout pops the exiting button out of flow so its
+              neighbours slide to their new spot *at the same time* it fades
+              (not sequentially). The group is `relative` so the popped
+              (absolutely positioned) button stays put instead of flying to
+              the page origin. */}
+          {/* Left cluster: Back, then any validation error. flex-1 so the
+              error fills the row up to the right-hand buttons; min-w-0 lets
+              a long message wrap instead of overflowing. */}
+          <div className="relative flex flex-1 min-w-0 items-center gap-2">
+            <AnimatePresence mode="popLayout" initial={false}>
+              {showBack && (
+                <motion.div
+                  key="back"
+                  layout="position"
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={transition({
+                    ...spring.fast,
+                    opacity: { duration: 0.1 },
+                  })}
+                >
+                  {/* Bare ← icon via the Button's icon slot, so it gets the
+                      proper tighter icon-side padding. */}
+                  <Button
+                    variant="ghost"
+                    size={navigationContainer !== undefined ? "lg" : "sm"}
+                    leadingIcon={ArrowLeftKey}
+                    onClick={handleBack}
+                    // Arrow is desktop-only; restore symmetric padding on
+                    // mobile where it's hidden, tighten for the icon on ≥sm.
+                    className={navigationContainer !== undefined ? undefined : "pl-3 sm:pl-2"}
+                  >
+                    {backLabel}
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {/* Validation error — left-aligned at the content edge (the
+                px-2/sm:px-3 cancels the row's -mx), or just after Back when
+                present. Conditionally rendered (no exit animation) so
+                clearing it on edit removes the node immediately instead of
+                leaving an invisible spacer. Rendered through Base UI
+                Field.Error so its generated id is registered on the Field
+                and auto-appears in the textarea's aria-describedby;
+                `match` pins it visible while our submit-time validation
+                (handleOtherSubmit) has an error standing. */}
+            {freeTextError && (
+              <Field.Error
+                key="ft-error"
+                match
+                render={
+                  <motion.p
+                    role="alert"
+                    initial={{ opacity: 0, y: -2 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={transition({
+                      ...spring.fast,
+                      opacity: { duration: 0.12 },
+                    })}
+                    className="min-w-0 px-2 sm:px-3 text-left text-[12px] leading-snug text-destructive"
+                  />
+                }
+              >
+                {freeTextError}
+              </Field.Error>
+            )}
+          </div>
+          <div className="relative flex items-center gap-2">
+            <AnimatePresence mode="popLayout" initial={false}>
+              {showSkip && (
+                <motion.div
+                  key="skip"
+                  layout="position"
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={transition({
+                    ...spring.fast,
+                    opacity: { duration: 0.1 },
+                  })}
+                >
+                  {/* Bare → icon via the Button's icon slot (mirror of Back). */}
+                  <Button
+                    variant="ghost"
+                    size={navigationContainer !== undefined ? "lg" : "sm"}
+                    trailingIcon={ArrowRightKey}
+                    onClick={handleSkip}
+                    // Arrow is desktop-only; restore symmetric padding on
+                    // mobile where it's hidden, tighten for the icon on ≥sm.
+                    className={navigationContainer !== undefined ? undefined : "pr-3 sm:pr-2"}
+                  >
+                    {skipLabel}
+                  </Button>
+                </motion.div>
+              )}
+              {showSubmit && (
+                <motion.div
+                  key="continue"
+                  layout="position"
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={transition({
+                    ...spring.fast,
+                    opacity: { duration: 0.1 },
+                  })}
+                >
+                  <Button
+                    variant="primary"
+                    size={navigationContainer !== undefined ? "lg" : "sm"}
+                    onClick={
+                      isFreeText ? handleOtherSubmit : handleMultiNext
+                    }
+                    disabled={
+                      isFreeText
+                        ? otherText.trim().length === 0
+                        : selectedIds.length === 0 &&
+                          otherText.trim().length === 0
+                    }
+                    // The shortcut chip acts as a trailing icon, so tighten
+                    // the right padding to match the Button's iconRight on
+                    // desktop. The chip is hidden on mobile, so restore
+                    // symmetric padding there.
+                    className={navigationContainer !== undefined ? undefined : "pr-3 sm:pr-2"}
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      {question.nextLabel ??
+                        (safeIndex >= total - 1 ? "Finish" : "Continue")}
+                      {/* Shortcut hint — replaces the trailing arrow. Sits
+                          inside the button so it dims with the disabled
+                          state. ⌘↵ on macOS, ⌃↵ elsewhere. Desktop-only:
+                          mobile has no physical keyboard to trigger it. */}
+                      <span className={navigationContainer !== undefined ? "hidden" : "hidden sm:contents"}>
+                        <ShortcutChip shape={shape} tone="inverted">
+                          {isMac ? "⌘" : "⌃"}
+                          {"↵"}
+                        </ShortcutChip>
+                      </span>
+                    </span>
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+    ) : null;
+
     const root = (
       <div
         ref={(node) => {
@@ -1247,7 +1413,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
       >
         {/* Header — static top, fixed across questions; only the number
             changes. Lives outside the morphing region so it never shifts. */}
-        <div
+        {showProgress && (<div
           className={cn(
             "flex items-center text-muted-foreground",
             // The card's outer padding drops a notch at compact. px-3.5 is the
@@ -1259,7 +1425,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
           )}
         >
           <span>{progressLabel(safeIndex + 1, total)}</span>
-        </div>
+        </div>)}
 
         {/* Field context for freeText validation — one Base UI Field spans
             both the textarea (Field.Control, in the morphing region) and the
@@ -1288,7 +1454,8 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
               ref={contentMeasureRef}
               className={cn(
                 compact ? "px-3.5 sm:px-4" : "px-4 sm:px-5",
-                showFooter
+                !showProgress && "pt-4",
+                showFooter && navigationContainer === undefined
                   ? "pb-1"
                   : compact
                     ? "pb-2 sm:pb-2.5"
@@ -1423,164 +1590,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
               clips it. Because the height is a real layout value (not a
               transform), the footer reflows frame-by-frame and rides the morph
               in lockstep. */}
-          {showFooter && (
-            <div
-              className={cn(
-                "pt-1",
-                compact ? "px-3.5 sm:px-4 pb-1.5" : "px-4 sm:px-5 pb-2"
-              )}
-            >
-              <div className="flex items-center justify-between gap-2 -mx-2 sm:-mx-3">
-                {/* Each button is wrapped in a motion.div so it fades + scales
-                    when it appears/disappears (e.g. Continue on multi-select).
-                    popLayout pops the exiting button out of flow so its
-                    neighbours slide to their new spot *at the same time* it fades
-                    (not sequentially). The group is `relative` so the popped
-                    (absolutely positioned) button stays put instead of flying to
-                    the page origin. */}
-                {/* Left cluster: Back, then any validation error. flex-1 so the
-                    error fills the row up to the right-hand buttons; min-w-0 lets
-                    a long message wrap instead of overflowing. */}
-                <div className="relative flex flex-1 min-w-0 items-center gap-2">
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    {showBack && (
-                      <motion.div
-                        key="back"
-                        layout="position"
-                        initial={{ opacity: 0, scale: 0.85 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.85 }}
-                        transition={transition({
-                          ...spring.fast,
-                          opacity: { duration: 0.1 },
-                        })}
-                      >
-                        {/* Bare ← icon via the Button's icon slot, so it gets the
-                            proper tighter icon-side padding. */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          leadingIcon={ArrowLeftKey}
-                          onClick={handleBack}
-                          // Arrow is desktop-only; restore symmetric padding on
-                          // mobile where it's hidden, tighten for the icon on ≥sm.
-                          className="pl-3 sm:pl-2"
-                        >
-                          {backLabel}
-                        </Button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  {/* Validation error — left-aligned at the content edge (the
-                      px-2/sm:px-3 cancels the row's -mx), or just after Back when
-                      present. Conditionally rendered (no exit animation) so
-                      clearing it on edit removes the node immediately instead of
-                      leaving an invisible spacer. Rendered through Base UI
-                      Field.Error so its generated id is registered on the Field
-                      and auto-appears in the textarea's aria-describedby;
-                      `match` pins it visible while our submit-time validation
-                      (handleOtherSubmit) has an error standing. */}
-                  {freeTextError && (
-                    <Field.Error
-                      key="ft-error"
-                      match
-                      render={
-                        <motion.p
-                          role="alert"
-                          initial={{ opacity: 0, y: -2 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={transition({
-                            ...spring.fast,
-                            opacity: { duration: 0.12 },
-                          })}
-                          className="min-w-0 px-2 sm:px-3 text-left text-[12px] leading-snug text-destructive"
-                        />
-                      }
-                    >
-                      {freeTextError}
-                    </Field.Error>
-                  )}
-                </div>
-                <div className="relative flex items-center gap-2">
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    {showSkip && (
-                      <motion.div
-                        key="skip"
-                        layout="position"
-                        initial={{ opacity: 0, scale: 0.85 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.85 }}
-                        transition={transition({
-                          ...spring.fast,
-                          opacity: { duration: 0.1 },
-                        })}
-                      >
-                        {/* Bare → icon via the Button's icon slot (mirror of Back). */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          trailingIcon={ArrowRightKey}
-                          onClick={handleSkip}
-                          // Arrow is desktop-only; restore symmetric padding on
-                          // mobile where it's hidden, tighten for the icon on ≥sm.
-                          className="pr-3 sm:pr-2"
-                        >
-                          {skipLabel}
-                        </Button>
-                      </motion.div>
-                    )}
-                    {showSubmit && (
-                      <motion.div
-                        key="continue"
-                        layout="position"
-                        initial={{ opacity: 0, scale: 0.85 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.85 }}
-                        transition={transition({
-                          ...spring.fast,
-                          opacity: { duration: 0.1 },
-                        })}
-                      >
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={
-                            isFreeText ? handleOtherSubmit : handleMultiNext
-                          }
-                          disabled={
-                            isFreeText
-                              ? otherText.trim().length === 0
-                              : selectedIds.length === 0 &&
-                                otherText.trim().length === 0
-                          }
-                          // The shortcut chip acts as a trailing icon, so tighten
-                          // the right padding to match the Button's iconRight on
-                          // desktop. The chip is hidden on mobile, so restore
-                          // symmetric padding there.
-                          className="pr-3 sm:pr-2"
-                        >
-                          <span className="inline-flex items-center gap-1.5">
-                            {question.nextLabel ??
-                              (safeIndex >= total - 1 ? "Finish" : "Continue")}
-                            {/* Shortcut hint — replaces the trailing arrow. Sits
-                                inside the button so it dims with the disabled
-                                state. ⌘↵ on macOS, ⌃↵ elsewhere. Desktop-only:
-                                mobile has no physical keyboard to trigger it. */}
-                            <span className="hidden sm:contents">
-                              <ShortcutChip shape={shape} tone="inverted">
-                                {isMac ? "⌘" : "⌃"}
-                                {"↵"}
-                              </ShortcutChip>
-                            </span>
-                          </span>
-                        </Button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            </div>
-          )}
+          {navigationContainer === undefined ? footer : navigationContainer ? createPortal(footer, navigationContainer) : null}
         </Field.Root>
       </div>
     );

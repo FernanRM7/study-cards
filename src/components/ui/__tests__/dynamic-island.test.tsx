@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DynamicIsland } from "../dynamic-island";
+vi.mock("cube-motion/react", () => ({ Morph: ({ active, off, on }: { active: boolean; off: ReactNode; on: ReactNode }) => <span>{active ? on : off}</span> }));
 let root: Root;
 let host: HTMLDivElement;
 beforeEach(() => {
@@ -18,7 +19,9 @@ describe("compact quiz countdown", () => {
     expect(host.querySelector('button')).toBeNull();
     expect(host.textContent).toBe('0:02');
     act(() => vi.advanceTimersByTime(4000));
-    expect(timeout).toHaveBeenCalledTimes(1); expect(host.textContent).toBe('0:00');
+    expect(timeout).toHaveBeenCalledTimes(1); expect(host.querySelector('[role=timer]')?.getAttribute('aria-label')).toBe('Tiempo agotado');
+    expect(host.textContent).toContain('Time’s up'); expect(host.textContent).not.toContain('0:00');
+    expect(host.querySelector('[role=status]')?.textContent).toBe('Tiempo agotado');
     act(() => root.render(<DynamicIsland key="two" seconds={2} active onTimeout={timeout} />));
     expect(host.textContent).toBe('0:02');
   });

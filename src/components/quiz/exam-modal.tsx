@@ -1,9 +1,9 @@
 "use client";
-import { createElement, useRef, useState } from "react";
+import { createElement, useCallback, useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { DynamicIsland } from "@/components/ui/dynamic-island";
+import { DynamicIsland, TIMED_QUESTION_SECONDS } from "@/components/ui/dynamic-island";
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioItem } from "@/components/ui/radio-group";
 import { useIcon } from "@/lib/icon-context";
@@ -29,6 +29,8 @@ export function ExamModal({ open, onOpenChange, deck }: { open: boolean; onOpenC
   const [attempt, setAttempt] = useState(0);
   const heading = useRef<HTMLHeadingElement>(null);
   const submitting = useRef(false);
+  const [expired, setExpired] = useState(false);
+  const advanceRemaining = useRef(1000);
   const total = deck.levels[0].questions.length;
   const score = answers.filter(a => a.correct).length;
   const current = run[index];
@@ -40,7 +42,7 @@ export function ExamModal({ open, onOpenChange, deck }: { open: boolean; onOpenC
     });
     setRun(cards); setIndex(0); setAnswers([]); setPicked(null); setOrder(cards[0].order);
     setAttempt(value => value + 1);
-    setNotice(""); setView("run"); submitting.current = false;
+    setNotice(""); setView("run"); setExpired(false); advanceRemaining.current = 1000; submitting.current = false;
     requestAnimationFrame(() => heading.current?.focus());
   };
   const close = (next: boolean) => {
@@ -48,14 +50,7 @@ export function ExamModal({ open, onOpenChange, deck }: { open: boolean; onOpenC
     if (!next) setView("intro");
     onOpenChange(next);
   };
-  const submit = (expired = false) => {
-    if (!current || submitting.current || (!expired && current.q.kind !== "order" && picked === null)) return;
-    submitting.current = true;
-    const q = current.q;
-    const text = expired ? "Sin respuesta (tiempo agotado)" : q.kind === "order" ? order.map(i => q.items[i].label).join(" → ") : picked!;
-    const answer = { text, correct: !expired && (q.kind === "order" ? isExamOrderCorrect(q, order) : text === examAnswer(q)) };
-    const next = [...answers, answer];
-    setAnswers(next);
+  const advance = useCallback((next: Answer[]) => {
     if (index + 1 === run.length) {
       const points = next.filter(a => a.correct).length;
       try {
@@ -66,7 +61,28 @@ export function ExamModal({ open, onOpenChange, deck }: { open: boolean; onOpenC
     } else {
       setIndex(index + 1); setPicked(null); setOrder(run[index + 1].order);
     }
+    setExpired(false); advanceRemaining.current = 1000;
     requestAnimationFrame(() => { submitting.current = false; heading.current?.focus(); });
+  }, [deck, index, run]);
+  useEffect(() => {
+    if (!expired || !open || confirmExit || view !== "run") return;
+    const started = Date.now();
+    const timer = window.setTimeout(() => advance(answers), advanceRemaining.current);
+    return () => {
+      window.clearTimeout(timer);
+      advanceRemaining.current = Math.max(0, advanceRemaining.current - (Date.now() - started));
+    };
+  }, [expired, open, confirmExit, view, advance, answers]);
+  const submit = (timedOut = false) => {
+    if (!current || submitting.current || (!timedOut && current.q.kind !== "order" && picked === null)) return;
+    submitting.current = true;
+    const q = current.q;
+    const text = timedOut ? "Sin respuesta (tiempo agotado)" : q.kind === "order" ? order.map(i => q.items[i].label).join(" → ") : picked!;
+    const answer = { text, correct: !timedOut && (q.kind === "order" ? isExamOrderCorrect(q, order) : text === examAnswer(q)) };
+    const next = [...answers, answer];
+    setAnswers(next);
+    if (timedOut) { advanceRemaining.current = 1000; setExpired(true); }
+    else advance(next);
   };
   const move = (position: number, delta: number) => setOrder(values => {
     const next = [...values]; const other = position + delta;
@@ -75,9 +91,11 @@ export function ExamModal({ open, onOpenChange, deck }: { open: boolean; onOpenC
   return <Dialog.Root open={open} onOpenChange={close}>
     <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
       <Dialog.Content lang="es" aria-describedby="exam-description" className="fixed left-1/2 top-1/2 z-[60] flex max-h-[92dvh] w-[min(640px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-3xl border border-border bg-background p-5 outline-none sm:p-8">
-        <div className={view === "intro" && !confirmExit ? "flex items-start justify-between gap-4" : "flex justify-end"}>
+        <div className={view === "intro" && !confirmExit ? "flex items-start justify-between gap-4" : "flex items-center justify-between gap-4"}>
           <Dialog.Title className={view === "intro" && !confirmExit ? "font-heading text-2xl" : "sr-only"}>{deck.title}</Dialog.Title>
-          <Button variant="ghost" size="icon-sm" aria-label="Cerrar" onClick={() => close(false)}>{createElement(CloseIcon, { size: 20 })}</Button>
+          {view === "run" && current && againstClock && <DynamicIsland key={`${attempt}-${index}`}
+            seconds={TIMED_QUESTION_SECONDS} active={open && !confirmExit && !expired} onTimeout={() => submit(true)} />}
+          <Button className="ms-auto" variant="ghost" size="icon-sm" aria-label="Cerrar" onClick={() => close(false)}>{createElement(CloseIcon, { size: 20 })}</Button>
         </div>
         <Dialog.Description id="exam-description" className={view === "intro" && !confirmExit ? "mt-2 text-sm text-muted-foreground" : "sr-only"}>
           {total} tarjetas · respuestas al finalizar
@@ -94,30 +112,30 @@ export function ExamModal({ open, onOpenChange, deck }: { open: boolean; onOpenC
             <h2 ref={heading} tabIndex={-1} className="text-lg font-medium">Pon a prueba tus temas</h2>
             <p className="mt-2 text-sm text-muted-foreground">Necesitas al menos {Math.ceil(total * .7)} aciertos. Al terminar podrás revisar todas tus respuestas.</p>
             {bestScoresFor(deck.slug)[deck.levels[0].id] !== undefined && <p className="mt-2 text-sm">Mejor resultado: {bestScoresFor(deck.slug)[deck.levels[0].id]} de {total}</p>}
-            <div className="mt-5 space-y-2">
-              <Switch label="Modo contrarreloj" checked={againstClock} onToggle={() => setAgainstClock(value => !value)} />
-              {againstClock && <p className="text-xs text-muted-foreground">{deck.timerSeconds} segundos por pregunta. Al agotarse, avanzas sin responder.</p>}
+            <Button className="mt-5 w-full" onClick={start}>Comenzar examen</Button>
+            <div className="mt-4 space-y-2 text-right">
+              <div className="flex justify-end"><Switch className="flex-row-reverse" label="Modo contrarreloj" checked={againstClock} onToggle={() => setAgainstClock(value => !value)} /></div>
+              {againstClock && <p className="text-xs text-muted-foreground">{TIMED_QUESTION_SECONDS} segundos por pregunta. Al agotarse, avanzas sin responder.</p>}
             </div>
-            <Button className="mt-5" onClick={start}>Comenzar examen</Button>
           </div> : view === "run" && current ? <div>
-            {againstClock && <div className="mb-4"><DynamicIsland key={`${attempt}-${index}`}
-              seconds={deck.timerSeconds} active={open && !confirmExit} onTimeout={() => submit(true)} /></div>}
             <p className="text-sm text-muted-foreground" role="status">Pregunta {index + 1} de {total}</p>
             <h2 ref={heading} tabIndex={-1} className="mt-3 font-heading text-2xl outline-none">{examPrompt(current.q)}</h2>
             {current.q.kind === "choice" && current.q.image && <Image unoptimized src={current.q.image} alt={current.q.imageAlt ?? "Imagen de la pregunta"} width={600} height={300} className="mt-3 max-h-40 w-full rounded-xl object-contain" />}
+            <fieldset disabled={expired} inert={expired} className="min-w-0 border-0 p-0">
             {current.q.kind === "order" ? <ol className="mt-4 space-y-2">
               {order.map((item, position) => <li key={item} className="flex items-center gap-2 rounded-xl border border-border p-2">
                 <span className="min-w-0 flex-1 break-words">{current.q.kind === "order" ? current.q.items[item].label : ""}</span>
-                <Button variant="ghost" disabled={position === 0} aria-label={`Subir elemento ${position + 1}`} onClick={() => move(position, -1)}>↑</Button>
-                <Button variant="ghost" disabled={position === order.length - 1} aria-label={`Bajar elemento ${position + 1}`} onClick={() => move(position, 1)}>↓</Button>
+                <Button variant="ghost" disabled={position === 0} aria-label={`Subir elemento ${position + 1}`} onClick={() => { if (!expired) move(position, -1); }}>↑</Button>
+                <Button variant="ghost" disabled={position === order.length - 1} aria-label={`Bajar elemento ${position + 1}`} onClick={() => { if (!expired) move(position, 1); }}>↓</Button>
               </li>)}
             </ol> : <RadioGroup key={current.q.id} className="mt-4 w-full" aria-label="Tu respuesta"
               selectedIndex={current.options.findIndex(option => option === picked)}>
               {current.options.map((option, optionIndex) => <RadioItem key={option} index={optionIndex}
-                label={option} value={option} selected={picked === option} onSelect={() => setPicked(option)}
+                label={option} value={option} selected={picked === option} onSelect={() => { if (!expired) setPicked(option); }}
                 className="h-auto min-h-12 py-3 [&>span]:min-w-0 [&>span]:break-words [&>span]:whitespace-normal" />)}
             </RadioGroup>}
-            <Button className="mt-5" disabled={current.q.kind !== "order" && picked === null} onClick={() => submit()}>
+            </fieldset>
+            <Button className="mt-5" disabled={expired || (current.q.kind !== "order" && picked === null)} onClick={() => submit()}>
               {index + 1 === total ? "Terminar examen" : "Siguiente"}
             </Button>
           </div> : view === "result" ? <div>
@@ -134,7 +152,7 @@ export function ExamModal({ open, onOpenChange, deck }: { open: boolean; onOpenC
               {q.sourceDeck && <p className="mt-2 text-xs text-muted-foreground">Mazo: {q.sourceDeck.title}</p>}
               {q.provenance && <Tooltip contentClassName="z-[100]" className="max-w-72 whitespace-normal"
                 content={<span>{q.provenance.kind === "ai" ? "Complemento de IA" : `Basada en tu material · ${q.provenance.references.map(r => r.file + ", " + r.location).join(" · ")}`}. La procedencia no garantiza exactitud.</span>}>
-                <Button variant="ghost" size="sm" aria-label="Ver procedencia">ⓘ Ver procedencia</Button>
+                <Button className="-ms-3" variant="ghost" size="sm" aria-label="Ver procedencia">ⓘ Ver procedencia</Button>
               </Tooltip>}
               {q.kind !== "order" && (q.revealImage || (q.kind === "choice" && q.image)) && <Image unoptimized src={(q.revealImage ?? (q.kind === "choice" ? q.image : undefined))!} alt={q.imageAlt ?? "Imagen de la respuesta"} width={600} height={300} className="mt-3 max-h-40 w-full rounded-xl object-contain" />}
               {q.kind !== "order" && q.imageCredit && <p className="mt-1 text-xs text-muted-foreground">{q.imageCredit.source ? <a href={q.imageCredit.source} target="_blank" rel="noreferrer">{q.imageCredit.title}</a> : q.imageCredit.title} {q.imageCredit.author} {q.imageCredit.license}</p>}

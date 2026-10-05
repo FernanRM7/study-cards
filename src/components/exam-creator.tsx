@@ -35,10 +35,15 @@ export function ExamCreator({ decks, disabled, onPlay, onSaved, open, panelVisib
   };
   return <motion.section layout={reduceMotion ? false : "position"} transition={{ layout: transition }} lang="es" className={panelVisible ? "mt-8 w-full" : "mt-3 w-full"} aria-label="Combinar mazos">
     <Tooltip side="bottom" className="max-w-64 whitespace-normal" content="Guarda al menos dos mazos para combinarlos." forceOpen={!open && decks.length < 2 ? undefined : false}>
-    <Button ref={trigger} variant="secondary" size={open ? "icon-lg" : "lg"} disabled={disabled} aria-disabled={!open && decks.length < 2 || undefined}
+    <span className="inline-flex rounded-full focus-visible:outline-2 focus-visible:outline-offset-2"
+      tabIndex={!open && decks.length < 2 ? 0 : undefined}
+      role={!open && decks.length < 2 ? "group" : undefined}
+      aria-label={!open && decks.length < 2 ? "Crear examen: guarda al menos dos mazos para combinarlos" : undefined}>
+    <Button ref={trigger} variant="secondary" size={open ? "icon-lg" : "lg"} disabled={disabled || (!open && decks.length < 2)} className={!open && decks.length < 2 ? "pointer-events-none" : undefined}
       aria-label={open ? "Volver a mis mazos" : undefined}
       aria-expanded={open} aria-controls="exam-picker" onClick={event => { if (!open && decks.length < 2) return; onOpenChange(!open, event.detail === 0); trigger.current?.focus({ preventScroll: true }); }}>
       {open ? <span aria-hidden>{createElement(ArrowLeft, { size: 20 })}</span> : "Crear examen"}</Button>
+    </span>
     </Tooltip>
     {panelVisible && <motion.div initial={{ opacity: 0, transform: reduceMotion || instantMotion ? "none" : "translateY(-8px)" }} animate={{ opacity: 1, transform: "translateY(0px)" }} transition={transition} id="exam-picker" className="mt-4 rounded-2xl border border-border bg-background p-4 sm:p-5">
       <h2 className="text-lg font-medium">Elige tus mazos</h2>

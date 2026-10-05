@@ -13,7 +13,7 @@ export function generationAvailable(): boolean {
   if (PROVIDER === "anthropic") return !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
   return false;
 }
-function cloudflareError(status: number, errors: { code?: number; message?: string }[]): GenerationError {
+export function cloudflareError(status: number, errors: { code?: number; message?: string }[]): GenerationError {
   const codes = errors.map(e => e.code);
   const message = errors.map(e => e.message ?? "").join(" ");
   if (codes.includes(3036) || /daily free allocation|daily.*quota|neurons.*limit/i.test(message))

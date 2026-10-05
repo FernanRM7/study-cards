@@ -220,9 +220,10 @@ Removes a saved deck or a draft. The built-in deck can't be deleted.
 
 ## Card format
 
-A deck may include `cover: { image, alt, credit? }` for a credited topic
-image on its introduction. `credit` uses the same optional fields as
-`imageCredit` (`title`, `author`, `license`, `source`).
+A deck may retain `cover: { image, alt, credit? }` for format compatibility.
+Automatic cover lookup and the intro cover display are disabled. Visitors can
+enable the optional per-question countdown in the intro; it defaults to off.
+
 
 | Parameter | Field(s) | Notes |
 | --- | --- | --- |

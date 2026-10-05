@@ -26,7 +26,6 @@ import { playAnswerSound } from "@/lib/sounds";
 import {
   TIMER_RING_CIRCUMFERENCE,
   TIMER_RING_RADIUS,
-  TimerRing,
 } from "@/components/quiz/timer-ring";
 import { useProximityHover, type ItemRect } from "@/hooks/use-proximity-hover";
 import { useTouchPrimary } from "@/hooks/use-touch-primary";
@@ -37,7 +36,8 @@ import { surfaceClasses } from "@/lib/surface-classes";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Info } from "lucide-react";
-import Image from "next/image";
+import { DynamicIsland } from "@/components/ui/dynamic-island";
+import { Switch } from "@/components/ui/switch";
 
 // ── Progress persistence ────────────────────────────────────
 // Same pattern as the theme preference: a small localStorage blob, guarded so
@@ -859,7 +859,8 @@ function StudyQuizModal({
   const [justUnlocked, setJustUnlocked] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
   const [best, setBest] = useState<BestScores>({});
-  const [coverFailed, setCoverFailed] = useState(false);
+  const [againstClock, setAgainstClock] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   // Guards resolve/timeout against double-firing (and against Strict Mode
   // double-invoking state updaters) so a card can never score twice.
   const revealedRef = useRef(false);
@@ -904,7 +905,8 @@ function StudyQuizModal({
     setTimedOut(false);
     setOrderReady(false);
     setConfirmExit(false);
-    setShowTimedIntro(QUIZ_LEVELS[i].timed);
+    setShowTimedIntro(false);
+    setAttempt(value => value + 1);
     setView("run");
   };
 
@@ -1072,9 +1074,9 @@ function StudyQuizModal({
           // scrolling.
           className={cn(
             "fixed inset-0 z-50 m-auto max-h-[92vh] w-[min(480px,92vw)] overflow-y-auto",
-            view === "intro" && (!deck.cover || coverFailed) && thumbnails.length === 0
+            view === "intro" && thumbnails.length === 0
               ? "bottom-auto top-1/2 h-auto -translate-y-1/2"
-              : "h-[min(700px,92vh)]",
+              : "h-[min(620px,92vh)]",
             surfaceClasses(4)
           )}
           initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
@@ -1137,9 +1139,9 @@ function StudyQuizModal({
                   {/* The unlock moment sits high in the panel, under the close
                       control, rather than floating mid-frame: the deck springs
                       up as a fan of cards while fireworks fill the page. */}
-                  <div className={cn("relative flex w-full flex-col items-center justify-start pt-8", (deck.cover && !coverFailed) || thumbnails.length > 0 ? "flex-none" : "flex-1")}>
+                  <div className="relative flex w-full flex-col items-center justify-start pb-6 pt-4">
                     {celebrate && <Confetti />}
-                    {(!deck.cover || coverFailed) && <DeckStack images={thumbnails} />}
+                    {thumbnails.length > 0 && <DeckStack images={thumbnails} />}
                     {celebrate && (
                       <p className="flex items-center gap-1 text-[13px] text-muted-foreground">
                         <DrawnCheck size={16} />
@@ -1159,20 +1161,13 @@ function StudyQuizModal({
                         {QUIZ_LEVELS[bestLevelIndex].questions.length}
                       </p>
                     )}
-                    {deck.cover && !coverFailed && (
-                      <figure className="my-6 w-full max-w-[320px]">
-                        <Image src={deck.cover.image} alt={deck.cover.alt} width={1120} height={630} unoptimized onError={() => setCoverFailed(true)} className="aspect-video max-h-[20vh] w-full rounded-2xl object-cover" />
-                        {deck.cover.credit && <figcaption className="mt-2 break-words text-[10px] leading-relaxed text-muted-foreground">
-                          {deck.cover.credit.source ? <a href={deck.cover.credit.source} target="_blank" rel="noreferrer" className="underline underline-offset-2">{deck.cover.credit.title ?? "Imagen"}</a> : (deck.cover.credit.title ?? "Imagen")}
-                          {deck.cover.credit.author ? ` · ${deck.cover.credit.author}` : ""}
-                          {deck.cover.credit.license ? ` · ${deck.cover.credit.license}` : ""}
-                        </figcaption>}
-                      </figure>
-                    )}
+
                   </div>
 
                   {/* Start pins to the bottom. */}
-                  <div className="w-full space-y-2">
+                  <div className="w-full space-y-4">
+                    <Switch label="Modo contrarreloj" checked={againstClock} onToggle={() => setAgainstClock(value => !value)} />
+                    {againstClock && <p className="text-xs text-muted-foreground">{QUIZ_LEVELS[startIndex].timerSeconds ?? TIMER_SECONDS} segundos por tarjeta.</p>}
                     <Button
                       variant="primary"
                       size="lg"
@@ -1196,6 +1191,10 @@ function StudyQuizModal({
 
               {view === "run" && current && !showTimedIntro && (
                 <div>
+                  {againstClock && <div className="mb-5 flex justify-start">
+                    <DynamicIsland key={`${attempt}-${qIndex}`} active={open && !confirmExit && !revealed}
+                      seconds={level.timerSeconds ?? TIMER_SECONDS} onTimeout={timeout} />
+                  </div>}
                     <motion.div
                       key={current.q.id}
                       ref={cardRef}
@@ -1376,14 +1375,7 @@ function StudyQuizModal({
                   className="absolute bottom-6 left-1/2 flex h-9 -translate-x-1/2 items-center gap-1 sm:gap-2"
                   aria-hidden
                 >
-                  {level.timed && !revealed && !showTimedIntro ? (
-                    <TimerRing
-                      key={qIndex}
-                      active={!confirmExit}
-                      seconds={level.timerSeconds ?? TIMER_SECONDS}
-                      onTimeout={timeout}
-                    />
-                  ) : (
+                  {
                   run.map((_, i) => {
                     // Answered dots carry their outcome; upcoming ones are
                     // hollow outlines; the current one is the neutral pill
@@ -1406,7 +1398,7 @@ function StudyQuizModal({
                       />
                     );
                   })
-                  )}
+                  }
                 </span>
                 <span className="sr-only">
                   Question {qIndex + 1} of {run.length}

@@ -17,7 +17,7 @@ import {
   type LevelBrief,
   type QuizQuestion,
 } from "../deck.ts";
-import { attachPicture as resolvePicture, findDeckCover } from "../image-search.ts";
+import { attachPicture as resolvePicture } from "../image-search.ts";
 
 import { structured, type TokenUsage } from "./ai-provider.ts";
 import { MaterialSchema, type SourceFragment } from "../material.ts";
@@ -111,7 +111,7 @@ export async function planDeck(
     prompt: [
       `Topic: ${topic}`, notes ? `Notes: ${notes}` : "",
       `Return metadata and exactly ${levels} level briefs, no cards. Each level will have ${cards} cards. Include a focus for each level.`,
-      IMAGES ? "Include coverQuery: 2–4 simple English keywords for a relevant photograph or illustration of this topic. Use the broad visual subject, not a question or lesson title. Never supply image URLs." : "",
+      "Do not include a cover image or coverQuery.",
       sources ? MATERIAL_RULES : "Follow the house ramp: basics, relationships, timed deep cuts, hidden timed bonus.",
       materialPrompt(sources),
     ].join("\n"),
@@ -123,9 +123,8 @@ export async function planDeck(
       return plan;
     },
   });
-  if (!IMAGES) return plan;
-  const cover = await findDeckCover(topic, { query: coverQuery, signal });
-  return cover ? { ...plan, cover } : plan;
+  void coverQuery;
+  return plan;
 }
 
 export interface WriteLevelOptions extends GenerationContext {

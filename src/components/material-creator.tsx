@@ -6,8 +6,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { AskUserQuestions, type AskUserAnswer, type AskUserQuestion } from "@/components/ui/ask-user-questions";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Switch } from "@/components/ui/switch";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { MaterialReview } from "@/components/material-review";
 import { buildDeck, type DeckBuild } from "@/lib/create-deck";
 import { MaterialSchema, sourceBytes, type ExtractedMaterial } from "@/lib/material";
 import { readMaterial, RemoteMaterialError } from "@/lib/read-material";
@@ -124,7 +123,7 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
       });
       abort.signal.throwIfAborted();
       setMaterial(result);
-      setSelected(new Set(result.sources.map(source => source.id)));
+      setSelected(new Set(MaterialSchema.safeParse(result.sources).success ? result.sources.map(source => source.id) : []));
       const initialTopic = topic || files[0]?.name.replace(/\.[^.]+$/, "").slice(0, 120) || "";
       setTopic(initialTopic);
       setAnswers(current => ({ ...current, topic: { questionId: "topic", selectedIds: [], otherText: initialTopic } }));
@@ -180,11 +179,18 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
 
   const stepLabel = stage === "ready" ? "Listo" : `Paso ${step} de 5`;
   const transition = reduceMotion ? { duration: 0 } : spring.moderate;
+  // Preserve unfinished work across navigation, but a finished deck is not a draft.
+  const resetCreation = () => {
+    setStage("upload"); setMaterial(null); setSelected(new Set()); setAnswers({});
+    setQuestionIndex(0); setTopic(""); setCount(10); setBuild(null); setError("");
+    setPendingFiles([]); setLocalRetry(false); setReadyDialogOpen(false);
+  };
   const study = () => {
     if (!build?.deck) return;
     setReadyDialogOpen(false);
     onOpenChange(false, true);
     onPlay(build.deck);
+    resetCreation();
   };
 
   const panelTransition = instantMotion ? { duration: 0 }
@@ -194,6 +200,7 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
     <Button ref={trigger} variant="secondary" size={open ? "icon-lg" : "lg"} aria-label={open ? "Volver a mis mazos" : undefined} aria-expanded={open} aria-controls={`${id}-panel`}
       disabled={disabled || extracting || stage === "generating"}
       onClick={event => {
+        if (!open && stage === "ready") resetCreation();
         onOpenChange(!open, event.detail === 0);
         trigger.current?.focus({ preventScroll: true });
       }}>
@@ -242,17 +249,8 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
             <Button type="button" variant="tertiary" disabled={extracting} onClick={() => setSelected(new Set(material.sources.map(source => source.id)))}>Incluir todo</Button>
             <Button type="button" variant="tertiary" disabled={extracting} onClick={() => setSelected(new Set())}>Quitar todo</Button>
           </div>
-          <ScrollArea role="region" className="h-72 rounded-xl border border-border" viewportClassName="p-3" aria-label="Contenido extraído" tabIndex={0}>
-            <div className="space-y-4">{material.sources.map(source => <article key={source.id} className="border-b border-border pb-4 last:border-0">
-              <Switch label={`${source.file} · ${source.location}`} checked={selected.has(source.id)} disabled={extracting}
-                onToggle={() => setSelected(current => { const next = new Set(current); if (next.has(source.id)) next.delete(source.id); else next.add(source.id); return next; })} />
-              <details className="mt-2 text-sm">
-                <summary className="cursor-pointer text-muted-foreground">Leer esta parte</summary>
-                <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{source.text}</p>
-              </details>
-            </article>)}</div>
-          </ScrollArea>
-          <p className="text-xs text-muted-foreground" aria-live="polite">{sources.length} partes seleccionadas</p>
+          <MaterialReview sources={material.sources} selected={selected} onChange={setSelected} />
+          <p className="text-xs text-muted-foreground" aria-live="polite">{sources.length} secciones seleccionadas</p>
           {!valid && <p role="alert" className="text-sm text-destructive">{sources.length === 0 ? "Elige al menos una parte para continuar." : sourceBytes(sources) > 24_000 ? "Selecciona menos contenido para continuar." : "Selecciona menos partes para continuar."}</p>}
           <div className="flex flex-wrap justify-between gap-3 pt-1">
             <Button variant="ghost" onClick={() => setStage("upload")}>Atrás</Button>
@@ -302,7 +300,7 @@ export function MaterialCreator({ open, panelVisible, instantMotion, onOpenChang
           </div>
         </div>}
 
-        {stage === "ready" && build?.deck && <Button ref={studyButton} size="lg" onClick={() => setReadyDialogOpen(true)}>Abrir mazo</Button>}
+        {stage === "ready" && build?.deck && <div className="flex flex-wrap gap-3"><Button ref={studyButton} size="lg" onClick={() => setReadyDialogOpen(true)}>Abrir mazo</Button><Button variant="secondary" onClick={resetCreation}>Añadir otro material</Button></div>}
       </motion.div>
       {error && stage !== "confirm" && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
     </motion.div>}

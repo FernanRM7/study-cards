@@ -7,7 +7,6 @@ import type { Deck } from "@/lib/deck";
 import { buildDeck, GenerationUnavailable, type DeckBuild } from "@/lib/create-deck";
 import { bestScoresFor, useSavedDecks } from "@/lib/deck-store";
 import { adoptSharedDeck } from "@/lib/adopt-shared-deck";
-import { ensureDeckCover } from "@/lib/deck-cover";
 import { useAgentActivity, useWebMcpTools, type DeckSummary } from "@/lib/webmcp";
 import { spring } from "@/lib/springs";
 import { cn } from "@/lib/utils";
@@ -118,11 +117,7 @@ export function HomeScreen({ shared, agentExpected = false }: HomeScreenProps = 
     setActiveDeck(deck);
     setFresh(!!options?.fresh);
     setQuizOpen(true);
-    if (!deck.cover && deck.mode !== "exam" && deck.slug !== DECK.slug) {
-      void ensureDeckCover(deck).then(enriched => {
-        if (enriched.cover) setActiveDeck(current => current.slug === enriched.slug && !current.cover ? { ...current, cover: enriched.cover } : current);
-      });
-    }
+
   }, []);
 
   // A shared deck lands in this browser's collection under its own slug —

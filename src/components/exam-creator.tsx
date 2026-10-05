@@ -1,6 +1,7 @@
 "use client";
 import { createElement, useRef, useState } from "react";
 import { motion, MotionConfig, useReducedMotion } from "framer-motion";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { CheckboxGroup, CheckboxItem } from "@/components/ui/checkbox-group";
 import { combineDecks } from "@/lib/combine-decks";
@@ -33,11 +34,12 @@ export function ExamCreator({ decks, disabled, onPlay, onSaved, open, panelVisib
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo crear el examen."); }
   };
   return <motion.section layout={reduceMotion ? false : "position"} transition={{ layout: transition }} lang="es" className={panelVisible ? "mt-8 w-full" : "mt-3 w-full"} aria-label="Combinar mazos">
-    <Button ref={trigger} variant="secondary" size={open ? "icon-lg" : "lg"} disabled={disabled || (!open && decks.length < 2)}
+    <Tooltip side="bottom" className="max-w-64 whitespace-normal" content="Guarda al menos dos mazos para combinarlos." forceOpen={!open && decks.length < 2 ? undefined : false}>
+    <Button ref={trigger} variant="secondary" size={open ? "icon-lg" : "lg"} disabled={disabled} aria-disabled={!open && decks.length < 2 || undefined}
       aria-label={open ? "Volver a mis mazos" : undefined}
-      aria-expanded={open} aria-controls="exam-picker" onClick={event => { onOpenChange(!open, event.detail === 0); trigger.current?.focus({ preventScroll: true }); }}>
+      aria-expanded={open} aria-controls="exam-picker" onClick={event => { if (!open && decks.length < 2) return; onOpenChange(!open, event.detail === 0); trigger.current?.focus({ preventScroll: true }); }}>
       {open ? <span aria-hidden>{createElement(ArrowLeft, { size: 20 })}</span> : "Crear examen"}</Button>
-    {!open && decks.length < 2 && <p className="mt-2 text-xs text-muted-foreground">Guarda al menos dos mazos para combinarlos.</p>}
+    </Tooltip>
     {panelVisible && <motion.div initial={{ opacity: 0, transform: reduceMotion || instantMotion ? "none" : "translateY(-8px)" }} animate={{ opacity: 1, transform: "translateY(0px)" }} transition={transition} id="exam-picker" className="mt-4 rounded-2xl border border-border bg-background p-4 sm:p-5">
       <h2 className="text-lg font-medium">Elige tus mazos</h2>
       <p className="mt-1 text-sm text-muted-foreground">Todas sus tarjetas formarán una sola prueba. Verás las respuestas al terminar.</p>

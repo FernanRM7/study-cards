@@ -27,3 +27,9 @@ under the SIL Open Font License; see the LICENSE-*.txt files next to them.
 The example deck's images in public/images are reproductions of artworks
 included for demonstration; replace them with your own material when you
 fork.
+
+---
+
+DynamicIsland compact timer is adapted from the Bencho Dynamic island block.
+Copyright (c) Bencho contributors. https://bencho.dev/licence
+Licensed under the MIT License reproduced above.

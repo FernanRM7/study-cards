@@ -288,7 +288,8 @@ omitir notas y no garantiza referencias por diapositiva.
 
 **Crear examen** combina al menos dos mazos guardados, incluyendo todos sus
 grupos, en una copia independiente. No usa IA. Mezcla todas las preguntas y
-opciones, sin tiempo, y muestra respuestas y explicaciones al final. El umbral
+opciones y muestra respuestas y explicaciones al final. El modo contrarreloj es
+opcional y empieza apagado; al agotarse el tiempo, la pregunta queda sin responder. El umbral
 es 70 %. Reintentar crea una nueva mezcla; no se guardan intentos incompletos.
 
 Los mazos, exámenes y mejores puntuaciones se guardan en `localStorage` del mismo
@@ -307,3 +308,25 @@ las tarifas de contexto corto consultadas el 3 de octubre de 2026 estiman
 US$0.02194, sin caché. Cambiar el nombre del modelo no configura su integración.
 Fuentes: [Cloudflare](https://developers.cloudflare.com/ai/models/openai/gpt-6-luna/)
 y [Firecrawl Parse](https://docs.firecrawl.dev/features/parse).
+
+### Revisión de Markdown y nuevos intentos
+
+Los MD siempre se leen localmente, sin Firecrawl ni una llamada de IA para
+clasificarlos. La revisión agrupa capítulos y subtítulos; los archivos largos
+ofrecen bloques seleccionables que respetan el límite conjunto de 24,000 bytes
+con sus referencias. El texto no se resume ni se trunca. Las secciones largas
+se dividen por párrafos, conservando tablas y bloques de código; si una tabla
+o bloque de código es demasiado grande por sí solo, se pide dividirlo en el
+archivo antes de incluirlo. Cada bloque sirve para crear un mazo independiente.
+
+Al terminar un mazo, puedes estudiar o añadir otro material sin recargar. Un
+recorrido pendiente conserva su selección cuando vuelves a la portada. Las
+portadas automáticas se han retirado; el campo `cover` se mantiene compatible
+con importación y enlaces antiguos, pero no se muestra en la introducción.
+
+Antes de estudiar o iniciar un examen, el switch Fluid **Modo contrarreloj**
+permite activar el tiempo por pregunta (20 segundos por defecto, o el valor
+del mazo/grupo). El contador compacto **DynamicIsland**, adaptado del componente
+MIT de [Bencho](https://bencho.dev/licence), aparece arriba a la izquierda y se
+pausa durante la confirmación de salida. En estudio el tiempo agotado revela
+la respuesta; en examen avanza sin revelar resultados hasta el final.

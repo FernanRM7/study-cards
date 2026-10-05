@@ -14,7 +14,7 @@ with a short pointer at `/llms.txt`. The landing page links to it as "For
 agents", and the `<head>` carries
 `<link rel="alternate" type="text/markdown" href="/agents.md">`.
 
-The deck schema also accepts an optional `cover: { image, alt, credit? }`
+The deck schema still accepts an optional `cover: { image, alt, credit? }`
 for a credited image on the quiz introduction; decks created before this
 field was added remain valid.
 
@@ -120,3 +120,6 @@ Los formatos aceptan `mode?: "study" | "exam"` (estudio por defecto) y
 `sourceDeck?: { slug, title, questionId }` en cada tarjeta. Los exámenes tienen
 un único grupo visible y sin tiempo y corrigen al final. Importar, obtener,
 publicar y compartir preservan estos campos; no es necesario generar con IA.
+
+Automatic cover generation/display is disabled. The intro now offers an optional
+countdown (off by default), without changing the deck schema or storage.

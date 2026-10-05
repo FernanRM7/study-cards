@@ -12,18 +12,21 @@ brief agents follow when writing one is [`prompts/new-deck.md`](../prompts/new-d
 | `title` | string | Site name: browser tab, share cards, share text. |
 | `headline` | string | The big question on the landing page and the deck intro, e.g. "Are you an Art connoisseur?" |
 | `tagline` | string | One line for metadata and share cards. |
-| `cover` | `{ image, alt, credit? }` | Optional topic image shown on the deck intro. `credit` uses `{ title?, author?, license?, source? }`. |
+| `cover` | `{ image, alt, credit? }` | Legacy optional cover, preserved on import/share but not displayed on the deck intro. `credit` uses `{ title?, author?, license?, source? }`. |
 | `intro` | string[] | Optional. Short paragraphs on the landing page. |
 | `cta` | string | Optional. Button label, default "Test knowledge". |
 | `author` | `{ name, url? }` | Optional. Credit line on the landing page and the deck intro. |
 | `passScore` | number | Optional, default 7. Score needed on a level to unlock the next. |
-| `timerSeconds` | number | Optional, default 20. Countdown per card on timed levels. |
+| `timerSeconds` | number | Optional, default 20. Countdown per card when the visitor enables timed mode. |
 | `verdicts` | `{ low, mid, high, perfect }` | Results-screen line by score band: ≤ 30 %, ≤ 60 %, < 100 %, 100 %. |
 | `levels` | Level[] | In play order. |
 
-Generated covers use short English search keywords and credited Commons
-results. Saved decks missing a cover can acquire one when opened, without
-regenerating their cards. `FLASHCARDS_IMAGES=off` disables both lookups.
+Automatic cover lookup is disabled. Explicit question images remain supported.
+The intro offers an optional countdown, off by default. Its per-card duration
+uses `timerSeconds` (a level override takes priority in study mode). No timer
+preference is persisted in the deck. The compact countdown is paused during
+exit confirmation. In an exam, expiry records an unanswered incorrect card
+and advances without revealing the answer.
 
 ## Level
 
@@ -32,7 +35,7 @@ regenerating their cards. `FLASHCARDS_IMAGES=off` disables both lookups.
 | `id` | string | Lowercase and dashes, unique. Appears in share URLs (`/s/<id>/<score>`). |
 | `name` | string | Shown as "<name> level". |
 | `tagline` | string | One line under the name on the level card. |
-| `timed` | boolean | Optional. Runs each card against a countdown ring. |
+| `timed` | boolean | Legacy hint preserved for compatibility; the visitor chooses timed mode before starting. |
 | `timerSeconds` | number | Optional. Overrides the deck default for this level. |
 | `hidden` | boolean | Optional. Only appears once the previous level is passed, with the golden beam. |
 | `questions` | Question[] | The reference deck uses 10; the results screen shows `score/<count>`. |

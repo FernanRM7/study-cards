@@ -60,25 +60,16 @@ describe("Cloudflare generation", () => {
   });
   it("normalizes material plans and canonicalizes source labels", async () => {
     fetchMock.mockResolvedValueOnce(success({ ...rawPlan, coverQuery: "cell microscope", passScore: 6, levels: [{ ...rawPlan.levels[0], timed: true, hidden: true }] }));
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: {
-      one: { title: "File:Biology.jpg", index: 1, imageinfo: [{
-        thumburl: "https://upload.wikimedia.org/biology.jpg", thumbwidth: 1200,
-        thumbheight: 800, mime: "image/jpeg", descriptionurl: "https://commons.wikimedia.org/wiki/File:Biology.jpg",
-        extmetadata: { LicenseShortName: { value: "CC BY-SA 4.0" }, ObjectName: { value: "Biology" }, Artist: { value: "Creator" } },
-      }] },
-    } } })));
     const plan = await planDeck("Biología", { sources: [source], levels: 1 });
     expect(plan.passScore).toBe(7); expect(plan.levels[0].timed).toBe(false); expect(plan.levels[0].hidden).toBe(false);
-    expect(new URL(fetchMock.mock.calls[1][0]).searchParams.get("gsrsearch")).toBe("cell microscope");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(plan).not.toHaveProperty("coverQuery");
-    expect(plan.cover).toEqual({ image: "https://upload.wikimedia.org/biology.jpg", alt: "Biology", credit: {
-      title: "Biology", author: "Creator", license: "CC BY-SA 4.0", source: "https://commons.wikimedia.org/wiki/File:Biology.jpg",
-    } });
+    expect(plan).not.toHaveProperty("cover");
     fetchMock.mockResolvedValueOnce(success(cards()));
     const questions = await writeLevel({ topic: "Biología", plan, level: plan.levels[0], sources: [source] });
     expect(questions[0].id).toBe("one-1");
     expect(questions[0].provenance).toEqual({ kind: "material", references: [{ id: "one", file: "biology.md", location: "Células" }] });
-    expect(JSON.parse(fetchMock.mock.calls[2][1].body).messages[0].content).toContain("untrusted");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).messages[0].content).toContain("untrusted");
   });
   it.each(["count", "options", "reference", "provenance"])("rejects invalid %s after repair", async kind => {
     const value = cards();

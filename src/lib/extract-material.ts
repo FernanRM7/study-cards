@@ -1,3 +1,4 @@
+import { splitMarkdownSection } from "./markdown-sections";
 import { MAX_FILES, MAX_FILE_BYTES, MAX_XML_BYTES, type ExtractedMaterial, type SourceFragment } from "./material";
 
 function xml(text: string): Document {
@@ -113,7 +114,13 @@ export function extractMarkdown(text: string, file: string, prefix: string): Ext
   let fenced = false;
   const flush = () => {
     const body = lines.join("\n").trim();
-    if (body) sources.push({ id: `${prefix}-${sources.length + 1}`, file, location: title.slice(0, 200), text: body });
+    if (body) {
+      const chunks = splitMarkdownSection(body);
+      chunks.forEach((text, index) => sources.push({
+        id: `${prefix}-${sources.length + 1}`, file,
+        location: (chunks.length > 1 ? `${title.slice(0, 160)} · Parte ${index + 1}` : title).slice(0, 200), text,
+      }));
+    }
     lines = [];
   };
   for (const line of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
